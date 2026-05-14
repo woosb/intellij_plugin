@@ -1,0 +1,35 @@
+<idea-plugin>
+    <id>com.github.wooju.oracle-dictionary-inspector</id>
+    <name>Oracle Dictionary Inspector</name>
+    <vendor email="" url="">wooju</vendor>
+    <description><![CDATA[
+        Oracle DB Ultimate에서 테이블을 선택하면 Oracle 딕셔너리(ALL_TAB_COLUMNS, ALL_CONSTRAINTS,
+        ALL_INDEXES, ALL_TRIGGERS 등)를 탭 형태로 조회할 수 있는 플러그인입니다.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.database</depends>
+
+    <actions>
+        <!-- Database 패널 트리 우클릭 -->
+        <action id="OracleInspector.ShowTableInfo"
+                class="com.github.wooju.oracleinspector.actions.ShowOracleTableInfoAction"
+                text="Oracle Dictionary Info"
+                description="Oracle 딕셔너리에서 테이블 상세 정보 조회">
+            <add-to-group group-id="DatabaseViewPopupMenu" anchor="last"/>
+            <!-- Alt+Shift+O (Win/Linux/Mac 공통) -->
+            <keyboard-shortcut keymap="$default"       first-keystroke="alt shift O"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt shift O"/>
+        </action>
+
+        <!-- SQL 에디터/콘솔에서 텍스트 선택 후 우클릭 -->
+        <action id="OracleInspector.ShowTableInfoFromEditor"
+                class="com.github.wooju.oracleinspector.actions.ShowOracleTableInfoFromEditorAction"
+                text="Oracle Dictionary Info"
+                description="선택된 테이블명으로 Oracle 딕셔너리 조회">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default"       first-keystroke="alt shift O"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt shift O"/>
+        </action>
+    </actions>
+</idea-plugin>
