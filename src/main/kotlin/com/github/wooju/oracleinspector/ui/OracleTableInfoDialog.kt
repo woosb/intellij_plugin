@@ -1,5 +1,7 @@
 package com.github.wooju.oracleinspector.ui
 
+import com.github.wooju.oracleinspector.model.TableInfo
+import com.github.wooju.oracleinspector.repository.DasTableRepository
 import com.github.wooju.oracleinspector.service.OracleDictionaryService
 import com.intellij.database.psi.DbTable
 import com.intellij.icons.AllIcons
@@ -25,6 +27,7 @@ class OracleTableInfoDialog(
 ) : DialogWrapper(project) {
 
     private lateinit var tabs: JBTabbedPane
+    private var info: TableInfo = DasTableRepository(table, schemaName, tableName).loadTable()
 
     init {
         title = "$schemaName.$tableName"
@@ -47,7 +50,7 @@ class OracleTableInfoDialog(
 
     // ── 상단 바: 코멘트 + 새로고침 ────────────────────────────────────────────
     private fun buildTopBar(): JComponent {
-        val comment = table.comment?.takeIf { it.isNotBlank() } ?: ""
+        val comment = info.comment?.takeIf { it.isNotBlank() } ?: ""
 
         val commentLabel = JBLabel(comment).apply {
             font = font.deriveFont(Font.ITALIC, 12f)
@@ -79,13 +82,13 @@ class OracleTableInfoDialog(
         fun addTab(name: String, model: DictionaryTableModel) =
             tabs.addTab("$name  (${model.rowCount})", createTablePanel(model))
 
-        addTab("Columns",      OracleDictionaryService.buildColumnsModel(table))
-        addTab("Keys",         OracleDictionaryService.buildKeysModel(table))
-        addTab("Foreign Keys", OracleDictionaryService.buildForeignKeysModel(table))
-        addTab("Indexes",      OracleDictionaryService.buildIndexesModel(table))
-        addTab("Checks",       OracleDictionaryService.buildChecksModel(table))
-        tabs.addTab("DDL",          createSqlPanel(OracleDictionaryService.buildDdl(table, schemaName, tableName)))
-        tabs.addTab("SELECT",       createSqlPanel(OracleDictionaryService.buildSelectQuery(table, schemaName, tableName)))
+        addTab("Columns",      OracleDictionaryService.buildColumnsModel(info))
+        addTab("Keys",         OracleDictionaryService.buildKeysModel(info))
+        addTab("Foreign Keys", OracleDictionaryService.buildForeignKeysModel(info))
+        addTab("Indexes",      OracleDictionaryService.buildIndexesModel(info))
+        addTab("Checks",       OracleDictionaryService.buildChecksModel(info))
+        tabs.addTab("DDL",          createSqlPanel(OracleDictionaryService.buildDdl(info)))
+        tabs.addTab("SELECT",       createSqlPanel(OracleDictionaryService.buildSelectQuery(info)))
         tabs.addTab("Comments SQL", createSqlPanel(OracleDictionaryService.commentsQuery(schemaName, tableName)))
         tabs.addTab("Triggers SQL", createSqlPanel(OracleDictionaryService.triggersQuery(schemaName, tableName)))
     }
@@ -93,6 +96,7 @@ class OracleTableInfoDialog(
     // ── 새로고침 ──────────────────────────────────────────────────────────────
     private fun refresh() {
         val selected = tabs.selectedIndex
+        info = DasTableRepository(table, schemaName, tableName).loadTable()
         tabs.removeAll()
         buildTabs()
         if (selected < tabs.tabCount) tabs.selectedIndex = selected
