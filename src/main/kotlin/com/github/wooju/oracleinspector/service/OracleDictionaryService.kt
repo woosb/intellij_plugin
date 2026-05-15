@@ -1,6 +1,9 @@
 package com.github.wooju.oracleinspector.service
 
+import com.github.wooju.oracleinspector.model.ArgumentInfo
 import com.github.wooju.oracleinspector.model.ColumnInfo
+import com.github.wooju.oracleinspector.model.RoutineInfo
+import com.github.wooju.oracleinspector.model.RoutineKind
 import com.github.wooju.oracleinspector.model.TableInfo
 import com.github.wooju.oracleinspector.ui.DictionaryTableModel
 import com.intellij.database.psi.DbTable
@@ -166,4 +169,96 @@ object OracleDictionaryService {
           AND TABLE_NAME = '${tableName.uppercase()}'
         ORDER BY TRIGGER_NAME
     """.trimIndent()
+
+    // ── Routine 실행 템플릿 ──────────────────────────────────────────────────
+    /**
+     * DECLARE / BEGIN / END 블록을 생성한다.
+     * 사용자가 SQL 콘솔에 복사해 IN 파라미터 값을 채워 넣고 실행하면 OUT 값을 DBMS_OUTPUT 으로 확인 가능.
+     */
+    fun buildExecuteBlock(info: RoutineInfo): String {
+        val schema = info.schema.uppercase()
+        val name = info.name.uppercase()
+        val isFunc = info.kind == RoutineKind.FUNCTION
+        val params = info.arguments.filter { !it.direction.equals("RETURN", ignoreCase = true) }
+        val returnArg = info.arguments.firstOrNull { it.direction.equals("RETURN", ignoreCase = true) }
+
+        val varNames = params.associateWith { localVarName(it) }
+        val declColumn = (varNames.values + (if (isFunc) listOf("l_result") else emptyList()))
+            .maxOfOrNull { it.length } ?: 0
+
+        val sb = StringBuilder()
+        sb.append("SET SERVEROUTPUT ON;\n\n")
+        sb.append("DECLARE\n")
+        for (p in params) {
+            val v = varNames.getValue(p)
+            val type = plsqlVarType(p.dataType)
+            val init = when (p.direction.uppercase()) {
+                "IN", "INOUT", "IN OUT" -> " := NULL"
+                else -> ""
+            }
+            sb.append("    ").append(v.padEnd(declColumn + 2)).append(type).append(init).append(";\n")
+        }
+        if (isFunc) {
+            val type = plsqlVarType(returnArg?.dataType ?: "VARCHAR2")
+            sb.append("    ").append("l_result".padEnd(declColumn + 2)).append(type).append(";\n")
+        }
+        sb.append("BEGIN\n")
+
+        // call
+        val callPrefix = if (isFunc) "    l_result := $schema.$name" else "    $schema.$name"
+        if (params.isEmpty()) {
+            sb.append(callPrefix).append("();\n")
+        } else {
+            sb.append(callPrefix).append("(\n")
+            val argColumn = params.maxOf { paramName(it).length }
+            for ((i, p) in params.withIndex()) {
+                val pName = paramName(p)
+                val comma = if (i < params.lastIndex) "," else ""
+                sb.append("        ").append(pName.padEnd(argColumn))
+                    .append(" => ").append(varNames.getValue(p)).append(comma).append("\n")
+            }
+            sb.append("    );\n")
+        }
+
+        // outputs
+        if (isFunc) {
+            sb.append("    DBMS_OUTPUT.PUT_LINE('RETURN: ' || l_result);\n")
+        }
+        for (p in params) {
+            val dir = p.direction.uppercase()
+            if (dir == "OUT" || dir == "INOUT" || dir == "IN OUT") {
+                val v = varNames.getValue(p)
+                sb.append("    DBMS_OUTPUT.PUT_LINE('${paramName(p)}: ' || ").append(v).append(");\n")
+            }
+        }
+
+        sb.append("END;\n/\n")
+        return sb.toString()
+    }
+
+    private fun paramName(a: ArgumentInfo): String =
+        a.name?.takeIf { it.isNotBlank() } ?: "p${a.position}"
+
+    private fun localVarName(a: ArgumentInfo): String =
+        "l_" + paramName(a).lowercase().trimStart('_')
+
+    /**
+     * PL/SQL 변수 선언에 쓸 타입 표기.
+     * VARCHAR2/CHAR/RAW 등 길이 필수 타입은 안전한 기본값을 채워준다.
+     * 그 외는 그대로 사용.
+     */
+    private fun plsqlVarType(dataType: String): String {
+        val t = dataType.trim().uppercase()
+        return when (t) {
+            "VARCHAR2", "VARCHAR", "STRING" -> "VARCHAR2(4000)"
+            "NVARCHAR2"                     -> "NVARCHAR2(2000)"
+            "CHAR"                          -> "CHAR(1)"
+            "NCHAR"                         -> "NCHAR(1)"
+            "RAW"                           -> "RAW(2000)"
+            "LONG RAW"                      -> "LONG RAW"
+            "PL/SQL BOOLEAN"                -> "BOOLEAN"
+            ""                              -> "VARCHAR2(4000)"
+            else                            -> t
+        }
+    }
 }
