@@ -50,4 +50,16 @@ data class TableInfo(
     val foreignKeys: List<ForeignKeyInfo>,
     val indexes: List<IndexInfo>,
     val checks: List<CheckInfo>,
-)
+) {
+    /**
+     * 캐시 데이터가 불완전한지 판정한다.
+     * - 컬럼이 하나도 없거나
+     * - 데이터 타입이 비어있거나 'UNKNOWN'인 컬럼이 있으면 불완전으로 본다.
+     */
+    fun isIncomplete(): Boolean {
+        if (columns.isEmpty()) return true
+        return columns.any { c ->
+            c.dataType.isBlank() || c.dataType.equals("UNKNOWN", ignoreCase = true)
+        }
+    }
+}

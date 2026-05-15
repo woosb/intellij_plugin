@@ -10,6 +10,12 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.database</depends>
 
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="Oracle Dictionary Inspector"
+                           displayType="BALLOON"
+                           bundle=""/>
+    </extensions>
+
     <actions>
         <!-- Database 패널 트리 우클릭 -->
         <action id="OracleInspector.ShowTableInfo"

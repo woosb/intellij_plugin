@@ -2,10 +2,17 @@ package com.github.wooju.oracleinspector.ui
 
 import com.github.wooju.oracleinspector.model.TableInfo
 import com.github.wooju.oracleinspector.repository.DasTableRepository
+import com.github.wooju.oracleinspector.repository.JdbcTableMetadataRepository
 import com.github.wooju.oracleinspector.service.OracleDictionaryService
 import com.intellij.database.psi.DbTable
 import com.intellij.icons.AllIcons
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.components.JBLabel
@@ -19,6 +26,8 @@ import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableColumn
 import javax.swing.table.TableRowSorter
 
+private val LOG = logger<OracleTableInfoDialog>()
+
 class OracleTableInfoDialog(
     private val project: Project,
     private val table: DbTable,
@@ -27,12 +36,20 @@ class OracleTableInfoDialog(
 ) : DialogWrapper(project) {
 
     private lateinit var tabs: JBTabbedPane
+    private lateinit var refreshBtn: JButton
+    private lateinit var statusLabel: JBLabel
+    private lateinit var commentLabel: JBLabel
     private var info: TableInfo = DasTableRepository(table, schemaName, tableName).loadTable()
+    @Volatile private var loading: Boolean = false
 
     init {
         title = "$schemaName.$tableName"
         isModal = false
         init()
+        // 캐시 데이터가 불완전하면 자동으로 JDBC 폴백
+        if (info.isIncomplete()) {
+            reloadFromJdbc(reason = "캐시 불완전 — 자동 새로고침")
+        }
     }
 
     override fun createCenterPanel(): JComponent {
@@ -48,33 +65,42 @@ class OracleTableInfoDialog(
         return root
     }
 
-    // ── 상단 바: 코멘트 + 새로고침 ────────────────────────────────────────────
+    // ── 상단 바: 코멘트 + 상태 + 새로고침 ─────────────────────────────────────
     private fun buildTopBar(): JComponent {
-        val comment = info.comment?.takeIf { it.isNotBlank() } ?: ""
-
-        val commentLabel = JBLabel(comment).apply {
+        commentLabel = JBLabel(info.comment?.takeIf { it.isNotBlank() } ?: "").apply {
             font = font.deriveFont(Font.ITALIC, 12f)
             foreground = UIManager.getColor("Label.disabledForeground")
         }
 
-        val refreshBtn = JButton(AllIcons.Actions.Refresh).apply {
-            toolTipText = "새로고침"
+        statusLabel = JBLabel("").apply {
+            font = font.deriveFont(11f)
+            foreground = UIManager.getColor("Label.disabledForeground")
+            border = BorderFactory.createEmptyBorder(0, 0, 0, 8)
+        }
+
+        refreshBtn = JButton(AllIcons.Actions.Refresh).apply {
+            toolTipText = "DB에서 새로고침"
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
             preferredSize = Dimension(28, 28)
-            addActionListener { refresh() }
+            addActionListener { reloadFromJdbc(reason = "새로고침") }
         }
 
-        val bar = JPanel(BorderLayout(8, 0)).apply {
+        val right = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(statusLabel, BorderLayout.CENTER)
+            add(refreshBtn, BorderLayout.EAST)
+        }
+
+        return JPanel(BorderLayout(8, 0)).apply {
             border = BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
                 BorderFactory.createEmptyBorder(5, 10, 5, 6)
             )
             add(commentLabel, BorderLayout.CENTER)
-            add(refreshBtn,   BorderLayout.EAST)
+            add(right, BorderLayout.EAST)
         }
-        return bar
     }
 
     // ── 탭 빌드 ───────────────────────────────────────────────────────────────
@@ -93,13 +119,67 @@ class OracleTableInfoDialog(
         tabs.addTab("Triggers SQL", createSqlPanel(OracleDictionaryService.triggersQuery(schemaName, tableName)))
     }
 
-    // ── 새로고침 ──────────────────────────────────────────────────────────────
-    private fun refresh() {
+    // ── JDBC 재로딩 (백그라운드) ──────────────────────────────────────────────
+    private fun reloadFromJdbc(reason: String) {
+        if (loading) return
+        val ds = table.dataSource
+        loading = true
+        setLoadingUi(true, message = reason)
+
+        val taskTitle = "$schemaName.$tableName — DB에서 메타데이터 조회"
+        object : Task.Backgroundable(project, taskTitle, true) {
+            private var fetched: TableInfo? = null
+            private var failure: Throwable? = null
+
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                try {
+                    fetched = JdbcTableMetadataRepository(project, ds, schemaName, tableName).loadTable()
+                } catch (t: Throwable) {
+                    LOG.warn("JDBC 메타데이터 조회 실패", t)
+                    failure = t
+                }
+            }
+
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    loading = false
+                    setLoadingUi(false, message = "")
+                    val ok = fetched
+                    val err = failure
+                    when {
+                        ok != null -> applyNewInfo(ok)
+                        err != null -> notifyError("DB 조회 실패: ${err.message ?: err::class.simpleName}")
+                        else -> notifyError("DB 조회가 취소되었습니다.")
+                    }
+                }
+            }
+        }.queue()
+    }
+
+    private fun applyNewInfo(newInfo: TableInfo) {
         val selected = tabs.selectedIndex
-        info = DasTableRepository(table, schemaName, tableName).loadTable()
+        info = newInfo
+        commentLabel.text = info.comment?.takeIf { it.isNotBlank() } ?: ""
         tabs.removeAll()
         buildTabs()
-        if (selected < tabs.tabCount) tabs.selectedIndex = selected
+        if (selected in 0 until tabs.tabCount) tabs.selectedIndex = selected
+    }
+
+    private fun setLoadingUi(busy: Boolean, message: String) {
+        refreshBtn.isEnabled = !busy
+        refreshBtn.icon = if (busy) AllIcons.Process.Step_1 else AllIcons.Actions.Refresh
+        statusLabel.text = message
+    }
+
+    private fun notifyError(text: String) {
+        val group = NotificationGroupManager.getInstance().getNotificationGroup("Oracle Dictionary Inspector")
+        if (group != null) {
+            group.createNotification(text, NotificationType.WARNING).notify(project)
+        } else {
+            statusLabel.text = text
+            statusLabel.foreground = UIManager.getColor("Label.errorForeground") ?: statusLabel.foreground
+        }
     }
 
     // ── 테이블 패널 ───────────────────────────────────────────────────────────
