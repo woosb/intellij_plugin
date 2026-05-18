@@ -19,6 +19,7 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
+import com.intellij.ui.components.JBTextField
 import com.intellij.ui.table.JBTable
 import java.awt.*
 import java.awt.datatransfer.StringSelection
@@ -319,6 +320,13 @@ class OracleTableInfoDialog(
             preferredSize = Dimension(28, 28)
         }
 
+        val whereField = JBTextField(28).apply {
+            toolTipText = "WHERE 절 — 예: STATUS = 'A' AND CREATED_DATE > SYSDATE - 30 (Enter로 적용)"
+        }
+        val orderByField = JBTextField(20).apply {
+            toolTipText = "ORDER BY 절 — 예: CREATED_DATE DESC (Enter로 적용)"
+        }
+
         fun render(page: JdbcTableDataRepository.DataPage) {
             val cols = page.columns
             val rows = page.rows
@@ -357,7 +365,12 @@ class OracleTableInfoDialog(
                     indicator.isIndeterminate = true
                     try {
                         fetched = JdbcTableDataRepository(project, ds, schemaName, tableName)
-                            .loadPage(pageIndex, pageSize)
+                            .loadPage(
+                                pageIndex = pageIndex,
+                                pageSize = pageSize,
+                                where = whereField.text,
+                                orderBy = orderByField.text,
+                            )
                     } catch (t: Throwable) {
                         LOG.warn("테이블 데이터 조회 실패", t)
                         failure = t
@@ -397,12 +410,13 @@ class OracleTableInfoDialog(
         nextBtn.addActionListener { load(state.pageIndex + 1) }
         reloadBtn.addActionListener { load(state.pageIndex) }
 
-        val toolbar = JPanel(BorderLayout()).apply {
+        // 엔터 키로 필터 적용 — 필터가 바뀌면 항상 첫 페이지부터
+        val applyFilter = java.awt.event.ActionListener { load(0) }
+        whereField.addActionListener(applyFilter)
+        orderByField.addActionListener(applyFilter)
+
+        val pageRow = JPanel(BorderLayout()).apply {
             isOpaque = false
-            border = BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
-                BorderFactory.createEmptyBorder(2, 6, 2, 4)
-            )
             val left = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply {
                 isOpaque = false
                 add(prevBtn)
@@ -416,6 +430,26 @@ class OracleTableInfoDialog(
             }
             add(left, BorderLayout.WEST)
             add(right, BorderLayout.EAST)
+        }
+
+        val filterRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            isOpaque = false
+            border = BorderFactory.createEmptyBorder(2, 4, 2, 0)
+            add(JLabel("WHERE").apply { font = font.deriveFont(Font.BOLD, 11f) })
+            add(whereField)
+            add(JLabel("ORDER BY").apply { font = font.deriveFont(Font.BOLD, 11f) })
+            add(orderByField)
+        }
+
+        val toolbar = JPanel().apply {
+            isOpaque = false
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
+                BorderFactory.createEmptyBorder(2, 6, 2, 4)
+            )
+            add(pageRow)
+            add(filterRow)
         }
 
         val panel = JPanel(BorderLayout()).apply {

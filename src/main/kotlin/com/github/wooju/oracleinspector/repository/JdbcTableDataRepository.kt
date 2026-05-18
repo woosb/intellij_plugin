@@ -6,6 +6,7 @@ import com.intellij.database.psi.DbDataSource
 import com.intellij.database.remote.jdbc.RemoteConnection
 import com.intellij.database.remote.jdbc.RemoteResultSet
 import com.intellij.openapi.project.Project
+import java.sql.Types
 
 /**
  * 테이블 데이터를 페이지 단위로 조회한다.
@@ -27,7 +28,12 @@ class JdbcTableDataRepository(
         val hasMore: Boolean,
     )
 
-    fun loadPage(pageIndex: Int, pageSize: Int): DataPage {
+    fun loadPage(
+        pageIndex: Int,
+        pageSize: Int,
+        where: String? = null,
+        orderBy: String? = null,
+    ): DataPage {
         require(pageIndex >= 0) { "pageIndex must be >= 0" }
         require(pageSize > 0) { "pageSize must be > 0" }
 
@@ -41,17 +47,28 @@ class JdbcTableDataRepository(
 
         ref.use { r ->
             val conn = r.get().remoteConnection
-            return queryPage(conn, pageIndex, pageSize)
+            return queryPage(conn, pageIndex, pageSize, where, orderBy)
         }
     }
 
-    private fun queryPage(conn: RemoteConnection, pageIndex: Int, pageSize: Int): DataPage {
+    private fun queryPage(
+        conn: RemoteConnection,
+        pageIndex: Int,
+        pageSize: Int,
+        where: String?,
+        orderBy: String?,
+    ): DataPage {
         val owner = quoteIdent(schemaName)
         val name = quoteIdent(tableName)
         val offset = pageIndex.toLong() * pageSize.toLong()
         val fetch = pageSize + 1  // hasMore 판정용 +1
 
-        val sql = "SELECT * FROM $owner.$name OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+        val sql = buildString {
+            append("SELECT * FROM ").append(owner).append('.').append(name)
+            where?.trim()?.takeIf { it.isNotEmpty() }?.let { append(" WHERE ").append(it) }
+            orderBy?.trim()?.takeIf { it.isNotEmpty() }?.let { append(" ORDER BY ").append(it) }
+            append(" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY")
+        }
 
         var stmt: com.intellij.database.remote.jdbc.RemotePreparedStatement? = null
         var rs: RemoteResultSet? = null
@@ -64,6 +81,7 @@ class JdbcTableDataRepository(
             val meta = rs.metaData
             val colCount = meta.columnCount
             val cols = (1..colCount).map { meta.getColumnLabel(it) }
+            val sqlTypes = IntArray(colCount) { meta.getColumnType(it + 1) }
 
             val rows = ArrayList<List<Any?>>(pageSize)
             var seen = 0
@@ -75,7 +93,7 @@ class JdbcTableDataRepository(
                 }
                 val row = ArrayList<Any?>(colCount)
                 for (i in 1..colCount) {
-                    row.add(rs.getObject(i))
+                    row.add(readValue(rs, i, sqlTypes[i - 1]))
                 }
                 rows.add(row)
                 seen++
@@ -92,6 +110,43 @@ class JdbcTableDataRepository(
             try { rs?.close() } catch (_: Exception) {}
             try { stmt?.close() } catch (_: Exception) {}
         }
+    }
+
+    /**
+     * Oracle 전용 객체(oracle.sql.TIMESTAMPTZ 등)는 IntelliJ 원격 JDBC 클라이언트
+     * 클래스로더에 없어서 getObject로 받으면 "<failed to load>"로 표시된다.
+     * 표시 가능한 표준 타입(String/Number/Boolean/byte[])으로 우회 변환한다.
+     */
+    private fun readValue(rs: RemoteResultSet, idx: Int, sqlType: Int): Any? {
+        val raw: Any? = when (sqlType) {
+            Types.DATE,
+            Types.TIME,
+            Types.TIME_WITH_TIMEZONE,
+            Types.TIMESTAMP,
+            Types.TIMESTAMP_WITH_TIMEZONE,
+            Types.CLOB,
+            Types.NCLOB,
+            Types.SQLXML,
+            Types.ROWID,
+            Types.STRUCT,
+            Types.ARRAY,
+            Types.REF,
+            Types.OTHER,
+            -> rs.getString(idx)
+
+            Types.BLOB,
+            Types.BINARY,
+            Types.VARBINARY,
+            Types.LONGVARBINARY,
+            -> rs.getBytes(idx)?.let { "<BINARY ${it.size} bytes>" }
+
+            else -> try {
+                rs.getObject(idx)
+            } catch (_: Throwable) {
+                rs.getString(idx)
+            }
+        }
+        return if (rs.wasNull()) null else raw
     }
 
     /** 식별자에 큰따옴표를 둘러 대소문자/특수문자를 안전하게 처리. 내부 따옴표는 두 번 escape. */
