@@ -2,6 +2,7 @@ package com.github.wooju.oracleinspector.ui
 
 import com.github.wooju.oracleinspector.model.TableInfo
 import com.github.wooju.oracleinspector.repository.DasTableRepository
+import com.github.wooju.oracleinspector.repository.JdbcTableDataRepository
 import com.github.wooju.oracleinspector.repository.JdbcTableMetadataRepository
 import com.github.wooju.oracleinspector.service.OracleDictionaryService
 import com.intellij.database.psi.DbTable
@@ -41,6 +42,7 @@ class OracleTableInfoDialog(
     private lateinit var commentLabel: JBLabel
     private var info: TableInfo = DasTableRepository(table, schemaName, tableName).loadTable()
     @Volatile private var loading: Boolean = false
+    private var dataPanel: JComponent? = null  // Data 탭은 메타데이터에 의존하지 않으므로 한 번만 생성
 
     init {
         title = "$schemaName.$tableName"
@@ -113,6 +115,7 @@ class OracleTableInfoDialog(
         addTab("Foreign Keys", OracleDictionaryService.buildForeignKeysModel(info))
         addTab("Indexes",      OracleDictionaryService.buildIndexesModel(info))
         addTab("Checks",       OracleDictionaryService.buildChecksModel(info))
+        tabs.addTab("Data",         dataPanel ?: createDataPanel().also { dataPanel = it })
         tabs.addTab("DDL",          createSqlPanel(OracleDictionaryService.buildDdl(info)))
         tabs.addTab("SELECT",       createSqlPanel(OracleDictionaryService.buildSelectQuery(info)))
         tabs.addTab("Comments SQL", createSqlPanel(OracleDictionaryService.commentsQuery(schemaName, tableName)))
@@ -266,6 +269,177 @@ class OracleTableInfoDialog(
             return this
         }
     }
+
+    // ── Data 탭 (페이징 조회) ────────────────────────────────────────────────
+    private fun createDataPanel(): JComponent {
+        val pageSize = 500
+        val state = DataTabState(pageIndex = 0)
+
+        val tableModel = DictionaryTableModel.empty(listOf("(데이터 로딩 전)"))
+        val dataTable = JBTable(tableModel).apply {
+            setShowGrid(false)
+            intercellSpacing = Dimension(0, 0)
+            rowHeight = 24
+            autoResizeMode = JTable.AUTO_RESIZE_OFF
+            tableHeader.reorderingAllowed = true
+            tableHeader.defaultRenderer = centerHeaderRenderer(tableHeader.defaultRenderer)
+            setDefaultRenderer(Any::class.java, StripedCellRenderer(SwingConstants.LEFT))
+        }
+        val scroll = JBScrollPane(dataTable)
+
+        val pageLabel = JBLabel("페이지 -").apply {
+            font = font.deriveFont(11f)
+            border = BorderFactory.createEmptyBorder(0, 8, 0, 8)
+        }
+        val rowCountLabel = JBLabel("").apply {
+            font = font.deriveFont(11f)
+            foreground = UIManager.getColor("Label.disabledForeground")
+        }
+        val prevBtn = JButton(AllIcons.Actions.Back).apply {
+            toolTipText = "이전 ${pageSize}행"
+            isBorderPainted = false
+            isContentAreaFilled = false
+            cursor = Cursor(Cursor.HAND_CURSOR)
+            preferredSize = Dimension(28, 28)
+            isEnabled = false
+        }
+        val nextBtn = JButton(AllIcons.Actions.Forward).apply {
+            toolTipText = "다음 ${pageSize}행"
+            isBorderPainted = false
+            isContentAreaFilled = false
+            cursor = Cursor(Cursor.HAND_CURSOR)
+            preferredSize = Dimension(28, 28)
+            isEnabled = false
+        }
+        val reloadBtn = JButton(AllIcons.Actions.Refresh).apply {
+            toolTipText = "현재 페이지 다시 조회"
+            isBorderPainted = false
+            isContentAreaFilled = false
+            cursor = Cursor(Cursor.HAND_CURSOR)
+            preferredSize = Dimension(28, 28)
+        }
+
+        fun render(page: JdbcTableDataRepository.DataPage) {
+            val cols = page.columns
+            val rows = page.rows
+            val newModel = DictionaryTableModel(cols, rows)
+            dataTable.model = newModel
+            dataTable.rowSorter = null  // 페이지가 바뀌면 정렬 초기화
+            autoFitColumns(dataTable, newModel)
+
+            val from = page.pageIndex.toLong() * page.pageSize + (if (rows.isEmpty()) 0 else 1)
+            val to = page.pageIndex.toLong() * page.pageSize + rows.size
+            pageLabel.text = "페이지 ${page.pageIndex + 1}"
+            rowCountLabel.text =
+                if (rows.isEmpty()) "결과 없음"
+                else "행 $from – $to" + if (page.hasMore) " (더 있음)" else ""
+
+            prevBtn.isEnabled = page.pageIndex > 0
+            nextBtn.isEnabled = page.hasMore
+        }
+
+        fun load(pageIndex: Int) {
+            if (state.loading) return
+            state.loading = true
+            prevBtn.isEnabled = false
+            nextBtn.isEnabled = false
+            reloadBtn.isEnabled = false
+            pageLabel.text = "조회 중…"
+            rowCountLabel.text = ""
+
+            val ds = table.dataSource
+            val title = "$schemaName.$tableName — 데이터 조회 (페이지 ${pageIndex + 1})"
+            object : Task.Backgroundable(project, title, true) {
+                private var fetched: JdbcTableDataRepository.DataPage? = null
+                private var failure: Throwable? = null
+
+                override fun run(indicator: ProgressIndicator) {
+                    indicator.isIndeterminate = true
+                    try {
+                        fetched = JdbcTableDataRepository(project, ds, schemaName, tableName)
+                            .loadPage(pageIndex, pageSize)
+                    } catch (t: Throwable) {
+                        LOG.warn("테이블 데이터 조회 실패", t)
+                        failure = t
+                    }
+                }
+
+                override fun onFinished() {
+                    ApplicationManager.getApplication().invokeLater {
+                        state.loading = false
+                        reloadBtn.isEnabled = true
+                        val ok = fetched
+                        val err = failure
+                        when {
+                            ok != null -> {
+                                state.pageIndex = ok.pageIndex
+                                render(ok)
+                            }
+                            err != null -> {
+                                pageLabel.text = "페이지 ${state.pageIndex + 1}"
+                                rowCountLabel.text = "오류"
+                                prevBtn.isEnabled = state.pageIndex > 0
+                                nextBtn.isEnabled = false
+                                notifyError("데이터 조회 실패: ${err.message ?: err::class.simpleName}")
+                            }
+                            else -> {
+                                pageLabel.text = "페이지 ${state.pageIndex + 1}"
+                                rowCountLabel.text = "취소됨"
+                                prevBtn.isEnabled = state.pageIndex > 0
+                            }
+                        }
+                    }
+                }
+            }.queue()
+        }
+
+        prevBtn.addActionListener { if (state.pageIndex > 0) load(state.pageIndex - 1) }
+        nextBtn.addActionListener { load(state.pageIndex + 1) }
+        reloadBtn.addActionListener { load(state.pageIndex) }
+
+        val toolbar = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
+                BorderFactory.createEmptyBorder(2, 6, 2, 4)
+            )
+            val left = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0)).apply {
+                isOpaque = false
+                add(prevBtn)
+                add(nextBtn)
+                add(pageLabel)
+                add(rowCountLabel)
+            }
+            val right = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply {
+                isOpaque = false
+                add(reloadBtn)
+            }
+            add(left, BorderLayout.WEST)
+            add(right, BorderLayout.EAST)
+        }
+
+        val panel = JPanel(BorderLayout()).apply {
+            add(toolbar, BorderLayout.NORTH)
+            add(scroll, BorderLayout.CENTER)
+        }
+
+        // 탭이 처음 열릴 때 한 번만 자동 로드
+        var loadedOnce = false
+        tabs.addChangeListener {
+            val title = if (tabs.selectedIndex >= 0) tabs.getTitleAt(tabs.selectedIndex) else ""
+            if (!loadedOnce && title == "Data") {
+                loadedOnce = true
+                load(0)
+            }
+        }
+
+        return panel
+    }
+
+    private class DataTabState(
+        var pageIndex: Int = 0,
+        @Volatile var loading: Boolean = false,
+    )
 
     // ── SQL 텍스트 패널 (복사 버튼 포함) ─────────────────────────────────────
     private fun createSqlPanel(sql: String): JComponent {
