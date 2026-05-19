@@ -3,12 +3,31 @@
     <name>Oracle Dictionary Inspector</name>
     <vendor email="" url="">wooju</vendor>
     <description><![CDATA[
-        Oracle DB Ultimate에서 테이블을 선택하면 Oracle 딕셔너리(ALL_TAB_COLUMNS, ALL_CONSTRAINTS,
-        ALL_INDEXES, ALL_TRIGGERS 등)를 탭 형태로 조회할 수 있는 플러그인입니다.
+        <h3>DataGrip / IntelliJ IDEA Ultimate plugin for Oracle dictionary inspection.</h3>
+        <p>
+          Toad-style describe dialogs for tables, views, procedures, functions,
+          plus a dedicated Tool Window for sessions and locks.
+        </p>
+        <ul>
+          <li>Table dialog: Columns / Keys / FK / Indexes / Checks / <b>Data preview with 500-row paging and WHERE/ORDER BY filters</b> / DDL / SELECT</li>
+          <li>Procedure / Function dialog: <b>IntelliJ Editor source with line numbers, syntax highlighting, and compile-error line markers</b>; Errors tab double-click jumps to source</li>
+          <li><code>Alt+Shift+O</code> describe action recognises TABLE / VIEW / PROCEDURE / FUNCTION / PACKAGE / SEQUENCE / SYNONYM (SCHEMA.NAME supported); prefers the current dialog's OWNER</li>
+          <li>Oracle Sessions tool window: V$SESSION browser with USER / STATUS / PROGRAM / MODULE filters, 5-second auto-refresh, per-session Current SQL, and a Locks tab joining V$LOCKED_OBJECT + V$SESSION + ALL_OBJECTS. Right-click → Kill Session.</li>
+          <li>Localised: English (default), Korean (한국어).</li>
+        </ul>
+        <hr/>
+        <p lang="ko">
+          DataGrip / IntelliJ IDEA Ultimate에서 Oracle 딕셔너리(테이블·뷰·프로시저·펑션·세션·락)를
+          탭 다이얼로그와 전용 Tool Window로 빠르게 보여주는 플러그인입니다.
+          Toad 스타일 Describe + 페이징 데이터 미리보기 + PL/SQL 컴파일 오류 라인 강조 + 실시간 세션/락 브라우저 제공.
+        </p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.database</depends>
+
+    <!-- Action text/description은 이 번들의 action.<id>.text / action.<id>.description 키로 자동 매핑 -->
+    <resource-bundle>messages.OracleInspectorBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="Oracle Dictionary Inspector"
@@ -23,11 +42,9 @@
     </extensions>
 
     <actions>
-        <!-- Database 패널 트리 우클릭 -->
+        <!-- Database 패널 트리 우클릭. text/description은 resource-bundle의 action.<id>.text / .description 키로 자동 -->
         <action id="OracleInspector.ShowTableInfo"
-                class="com.github.wooju.oracleinspector.actions.ShowOracleTableInfoAction"
-                text="Oracle Dictionary Info"
-                description="Oracle 딕셔너리에서 테이블 상세 정보 조회">
+                class="com.github.wooju.oracleinspector.actions.ShowOracleTableInfoAction">
             <add-to-group group-id="DatabaseViewPopupMenu" anchor="last"/>
             <!-- Alt+Shift+O (Win/Linux/Mac 공통) -->
             <keyboard-shortcut keymap="$default"       first-keystroke="alt shift O"/>
@@ -36,9 +53,7 @@
 
         <!-- SQL 에디터/콘솔에서 텍스트 선택 후 우클릭 -->
         <action id="OracleInspector.ShowTableInfoFromEditor"
-                class="com.github.wooju.oracleinspector.actions.ShowOracleTableInfoFromEditorAction"
-                text="Oracle Dictionary Info"
-                description="선택된 테이블명으로 Oracle 딕셔너리 조회">
+                class="com.github.wooju.oracleinspector.actions.ShowOracleTableInfoFromEditorAction">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default"       first-keystroke="alt shift O"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt shift O"/>

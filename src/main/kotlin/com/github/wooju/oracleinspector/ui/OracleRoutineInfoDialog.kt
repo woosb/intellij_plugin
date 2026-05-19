@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.ui
 
+import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
 import com.github.wooju.oracleinspector.model.RoutineInfo
 import com.github.wooju.oracleinspector.repository.DasRoutineRepository
@@ -75,7 +76,7 @@ class OracleRoutineInfoDialog(
         init()
         // 소스가 비어있으면 자동으로 JDBC 폴백
         if (info.isIncomplete()) {
-            reloadFromJdbc(reason = "캐시에 소스 없음 — 자동 새로고침")
+            reloadFromJdbc(reason = OracleInspectorBundle.message("routine.auto.refresh.reason.no.cached.source"))
         }
     }
 
@@ -107,12 +108,12 @@ class OracleRoutineInfoDialog(
             border = BorderFactory.createEmptyBorder(0, 0, 0, 8)
         }
         refreshBtn = JButton(AllIcons.Actions.Refresh).apply {
-            toolTipText = "DB에서 새로고침"
+            toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
             preferredSize = Dimension(28, 28)
-            addActionListener { reloadFromJdbc(reason = "새로고침") }
+            addActionListener { reloadFromJdbc(reason = OracleInspectorBundle.message("routine.refresh.reason.manual")) }
         }
 
         val right = JPanel(BorderLayout()).apply {
@@ -131,24 +132,32 @@ class OracleRoutineInfoDialog(
         }
     }
 
-    private fun kindText(): String = info.kind.name + (if (info.errors.isNotEmpty()) "  •  컴파일 오류 ${info.errors.size}건" else "")
+    private fun kindText(): String = if (info.errors.isNotEmpty())
+        OracleInspectorBundle.message("routine.kind.with.errors", info.kind.name, info.errors.size)
+    else info.kind.name
 
     // ── 탭 빌드 ───────────────────────────────────────────────────────────────
     private fun buildTabs() {
-        tabs.addTab("Source", createSourceEditorPanel(info.source.ifBlank { "-- 소스 없음 --" }))
-        tabs.addTab("Execute", createSqlPanel(OracleDictionaryService.buildExecuteBlock(info), header = "Execute"))
+        tabs.addTab(
+            OracleInspectorBundle.message("routine.tab.source"),
+            createSourceEditorPanel(info.source.ifBlank { OracleInspectorBundle.message("routine.source.empty") }),
+        )
+        tabs.addTab(
+            OracleInspectorBundle.message("routine.tab.execute"),
+            createSqlPanel(OracleDictionaryService.buildExecuteBlock(info), header = OracleInspectorBundle.message("routine.tab.execute")),
+        )
 
         val errorsModel = DictionaryTableModel(
             listOf("Line", "Position", "Text"),
             info.errors.map { listOf(it.line, it.position, it.text) },
         )
-        tabs.addTab("Errors  (${errorsModel.rowCount})", createErrorsTablePanel(errorsModel))
+        tabs.addTab(OracleInspectorBundle.message("routine.tab.errors", errorsModel.rowCount), createErrorsTablePanel(errorsModel))
 
         val argsModel = DictionaryTableModel(
             listOf("Pos", "Name", "Direction", "Data Type", "Default"),
             info.arguments.map { listOf(it.position, it.name, it.direction, it.dataType, it.defaultValue) },
         )
-        tabs.addTab("Arguments  (${argsModel.rowCount})", createTablePanel(argsModel))
+        tabs.addTab(OracleInspectorBundle.message("routine.tab.arguments", argsModel.rowCount), createTablePanel(argsModel))
     }
 
     // ── JDBC 재로딩 ──────────────────────────────────────────────────────────
@@ -158,7 +167,11 @@ class OracleRoutineInfoDialog(
         loading = true
         setLoadingUi(true, reason)
 
-        object : Task.Backgroundable(project, "$schemaName.$routineName — DB에서 메타데이터 조회", true) {
+        object : Task.Backgroundable(
+            project,
+            OracleInspectorBundle.message("routine.task.title.fetch.metadata", schemaName, routineName),
+            true,
+        ) {
             private var fetched: RoutineInfo? = null
             private var failure: Throwable? = null
 
@@ -180,8 +193,8 @@ class OracleRoutineInfoDialog(
                     val err = failure
                     when {
                         ok != null -> applyNewInfo(ok)
-                        err != null -> notifyError("DB 조회 실패: ${err.message ?: err::class.simpleName}")
-                        else -> notifyError("DB 조회가 취소되었습니다.")
+                        err != null -> notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
+                        else -> notifyError(OracleInspectorBundle.message("common.query.cancelled"))
                     }
                 }
             }
@@ -283,7 +296,7 @@ class OracleRoutineInfoDialog(
         }
 
         val copyBtn = JButton(AllIcons.Actions.Copy).apply {
-            toolTipText = "클립보드에 복사"
+            toolTipText = OracleInspectorBundle.message("common.copy.to.clipboard")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
@@ -328,7 +341,9 @@ class OracleRoutineInfoDialog(
                 attr,
             )
             highlighter.setErrorStripeMarkColor(JBColor.RED)
-            highlighter.setErrorStripeTooltip("Line ${err.line}, col ${err.position}: ${err.text}")
+            highlighter.setErrorStripeTooltip(
+                OracleInspectorBundle.message("routine.error.stripe.tooltip", err.line, err.position, err.text)
+            )
         }
     }
 
@@ -379,7 +394,7 @@ class OracleRoutineInfoDialog(
             border = BorderFactory.createEmptyBorder(10, 12, 10, 12)
         }
         val copyBtn = JButton(AllIcons.Actions.Copy).apply {
-            toolTipText = "클립보드에 복사"
+            toolTipText = OracleInspectorBundle.message("common.copy.to.clipboard")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)

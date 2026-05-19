@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.repository
 
+import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.intellij.database.dataSource.DatabaseConnectionManager
 import com.intellij.database.dataSource.LocalDataSource
 import com.intellij.database.psi.DbDataSource
@@ -38,12 +39,12 @@ class JdbcTableDataRepository(
         require(pageSize > 0) { "pageSize must be > 0" }
 
         val local = dataSource.delegate as? LocalDataSource
-            ?: throw IllegalStateException("LocalDataSource가 아니어서 JDBC 조회 불가")
+            ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.no.local.datasource"))
 
         val ref = DatabaseConnectionManager.getInstance()
             .build(project, local)
             .createBlocking()
-            ?: throw IllegalStateException("DB 연결을 만들 수 없습니다.")
+            ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.cannot.create.connection"))
 
         ref.use { r ->
             val conn = r.get().remoteConnection

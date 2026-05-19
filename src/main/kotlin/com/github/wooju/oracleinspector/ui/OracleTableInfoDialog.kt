@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.ui
 
+import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
 import com.github.wooju.oracleinspector.model.TableInfo
 import com.github.wooju.oracleinspector.repository.DasTableRepository
@@ -53,7 +54,7 @@ class OracleTableInfoDialog(
         init()
         // 캐시 데이터가 불완전하면 자동으로 JDBC 폴백
         if (info.isIncomplete()) {
-            reloadFromJdbc(reason = "캐시 불완전 — 자동 새로고침")
+            reloadFromJdbc(reason = OracleInspectorBundle.message("table.auto.refresh.reason.cache.incomplete"))
         }
     }
 
@@ -90,12 +91,12 @@ class OracleTableInfoDialog(
         }
 
         refreshBtn = JButton(AllIcons.Actions.Refresh).apply {
-            toolTipText = "DB에서 새로고침"
+            toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
             preferredSize = Dimension(28, 28)
-            addActionListener { reloadFromJdbc(reason = "새로고침") }
+            addActionListener { reloadFromJdbc(reason = OracleInspectorBundle.message("table.refresh.reason.manual")) }
         }
 
         val right = JPanel(BorderLayout()).apply {
@@ -138,7 +139,7 @@ class OracleTableInfoDialog(
         loading = true
         setLoadingUi(true, message = reason)
 
-        val taskTitle = "$schemaName.$tableName — DB에서 메타데이터 조회"
+        val taskTitle = OracleInspectorBundle.message("table.task.title.fetch.metadata", schemaName, tableName)
         object : Task.Backgroundable(project, taskTitle, true) {
             private var fetched: TableInfo? = null
             private var failure: Throwable? = null
@@ -161,8 +162,8 @@ class OracleTableInfoDialog(
                     val err = failure
                     when {
                         ok != null -> applyNewInfo(ok)
-                        err != null -> notifyError("DB 조회 실패: ${err.message ?: err::class.simpleName}")
-                        else -> notifyError("DB 조회가 취소되었습니다.")
+                        err != null -> notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
+                        else -> notifyError(OracleInspectorBundle.message("common.query.cancelled"))
                     }
                 }
             }
@@ -284,7 +285,7 @@ class OracleTableInfoDialog(
         val pageSize = 500
         val state = DataTabState(pageIndex = 0)
 
-        val tableModel = DictionaryTableModel.empty(listOf("(데이터 로딩 전)"))
+        val tableModel = DictionaryTableModel.empty(listOf(OracleInspectorBundle.message("data.placeholder")))
         val dataTable = JBTable(tableModel).apply {
             setShowGrid(false)
             intercellSpacing = Dimension(0, 0)
@@ -296,7 +297,7 @@ class OracleTableInfoDialog(
         }
         val scroll = JBScrollPane(dataTable)
 
-        val pageLabel = JBLabel("페이지 -").apply {
+        val pageLabel = JBLabel(OracleInspectorBundle.message("data.label.page.none")).apply {
             font = font.deriveFont(11f)
             border = BorderFactory.createEmptyBorder(0, 8, 0, 8)
         }
@@ -305,7 +306,7 @@ class OracleTableInfoDialog(
             foreground = UIManager.getColor("Label.disabledForeground")
         }
         val prevBtn = JButton(AllIcons.Actions.Back).apply {
-            toolTipText = "이전 ${pageSize}행"
+            toolTipText = OracleInspectorBundle.message("data.tooltip.prev", pageSize)
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
@@ -313,7 +314,7 @@ class OracleTableInfoDialog(
             isEnabled = false
         }
         val nextBtn = JButton(AllIcons.Actions.Forward).apply {
-            toolTipText = "다음 ${pageSize}행"
+            toolTipText = OracleInspectorBundle.message("data.tooltip.next", pageSize)
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
@@ -321,7 +322,7 @@ class OracleTableInfoDialog(
             isEnabled = false
         }
         val reloadBtn = JButton(AllIcons.Actions.Refresh).apply {
-            toolTipText = "현재 페이지 다시 조회"
+            toolTipText = OracleInspectorBundle.message("data.tooltip.reload")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
@@ -329,10 +330,10 @@ class OracleTableInfoDialog(
         }
 
         val whereField = JBTextField(28).apply {
-            toolTipText = "WHERE 절 — 예: STATUS = 'A' AND CREATED_DATE > SYSDATE - 30 (Enter로 적용)"
+            toolTipText = OracleInspectorBundle.message("data.tooltip.where")
         }
         val orderByField = JBTextField(20).apply {
-            toolTipText = "ORDER BY 절 — 예: CREATED_DATE DESC (Enter로 적용)"
+            toolTipText = OracleInspectorBundle.message("data.tooltip.orderby")
         }
 
         fun render(page: JdbcTableDataRepository.DataPage) {
@@ -345,10 +346,11 @@ class OracleTableInfoDialog(
 
             val from = page.pageIndex.toLong() * page.pageSize + (if (rows.isEmpty()) 0 else 1)
             val to = page.pageIndex.toLong() * page.pageSize + rows.size
-            pageLabel.text = "페이지 ${page.pageIndex + 1}"
+            pageLabel.text = OracleInspectorBundle.message("data.label.page.current", page.pageIndex + 1)
             rowCountLabel.text =
-                if (rows.isEmpty()) "결과 없음"
-                else "행 $from – $to" + if (page.hasMore) " (더 있음)" else ""
+                if (rows.isEmpty()) OracleInspectorBundle.message("data.label.no.result")
+                else OracleInspectorBundle.message("data.label.rows.range", from, to) +
+                    (if (page.hasMore) OracleInspectorBundle.message("data.label.has.more") else "")
 
             prevBtn.isEnabled = page.pageIndex > 0
             nextBtn.isEnabled = page.hasMore
@@ -360,11 +362,11 @@ class OracleTableInfoDialog(
             prevBtn.isEnabled = false
             nextBtn.isEnabled = false
             reloadBtn.isEnabled = false
-            pageLabel.text = "조회 중…"
+            pageLabel.text = OracleInspectorBundle.message("common.loading")
             rowCountLabel.text = ""
 
             val ds = table.dataSource
-            val title = "$schemaName.$tableName — 데이터 조회 (페이지 ${pageIndex + 1})"
+            val title = OracleInspectorBundle.message("data.task.title", schemaName, tableName, pageIndex + 1)
             object : Task.Backgroundable(project, title, true) {
                 private var fetched: JdbcTableDataRepository.DataPage? = null
                 private var failure: Throwable? = null
@@ -397,15 +399,15 @@ class OracleTableInfoDialog(
                                 render(ok)
                             }
                             err != null -> {
-                                pageLabel.text = "페이지 ${state.pageIndex + 1}"
-                                rowCountLabel.text = "오류"
+                                pageLabel.text = OracleInspectorBundle.message("data.label.page.current", state.pageIndex + 1)
+                                rowCountLabel.text = OracleInspectorBundle.message("common.error")
                                 prevBtn.isEnabled = state.pageIndex > 0
                                 nextBtn.isEnabled = false
-                                notifyError("데이터 조회 실패: ${err.message ?: err::class.simpleName}")
+                                notifyError(OracleInspectorBundle.message("data.error.fetch", err.message ?: err::class.simpleName.orEmpty()))
                             }
                             else -> {
-                                pageLabel.text = "페이지 ${state.pageIndex + 1}"
-                                rowCountLabel.text = "취소됨"
+                                pageLabel.text = OracleInspectorBundle.message("data.label.page.current", state.pageIndex + 1)
+                                rowCountLabel.text = OracleInspectorBundle.message("common.cancelled")
                                 prevBtn.isEnabled = state.pageIndex > 0
                             }
                         }
@@ -492,7 +494,7 @@ class OracleTableInfoDialog(
         }
 
         val copyBtn = JButton(AllIcons.Actions.Copy).apply {
-            toolTipText = "클립보드에 복사"
+            toolTipText = OracleInspectorBundle.message("common.copy.to.clipboard")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
