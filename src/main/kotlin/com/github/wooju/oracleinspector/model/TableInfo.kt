@@ -41,6 +41,14 @@ data class CheckInfo(
     val columns: List<String>,
 )
 
+data class TriggerInfo(
+    val name: String,
+    val type: String?,       // 예: BEFORE EACH ROW / AFTER STATEMENT
+    val event: String?,      // 예: INSERT OR UPDATE OR DELETE
+    val status: String?,     // ENABLED / DISABLED
+    val actionType: String?, // PL/SQL / CALL
+)
+
 data class TableInfo(
     val schema: String,
     val name: String,
@@ -50,6 +58,7 @@ data class TableInfo(
     val foreignKeys: List<ForeignKeyInfo>,
     val indexes: List<IndexInfo>,
     val checks: List<CheckInfo>,
+    val triggers: List<TriggerInfo> = emptyList(),
     /** ObjectKind == VIEW 면 true. DDL/탭 표시 분기에 사용. */
     val isView: Boolean = false,
     /** VIEW 일 때 ALL_VIEWS.TEXT 본문. JDBC 폴백에서만 채워짐. */

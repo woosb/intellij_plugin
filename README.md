@@ -26,7 +26,8 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 | **VIEW** | 테이블 정보 다이얼로그 — DDL 탭은 `ALL_VIEWS.TEXT` 기반 `CREATE OR REPLACE VIEW` |
 | **PROCEDURE / FUNCTION** (standalone) | 프로시저·펑션 다이얼로그 (아래) |
 | **PACKAGE** | 패키지 다이얼로그 — Spec / Body / Routines / Errors |
-| **SEQUENCE / SYNONYM** | 가벼운 `JBPopup`으로 메타 정보 표시 |
+| **SEQUENCE** | 시퀀스 다이얼로그 — MIN/MAX/INCREMENT/CYCLE/ORDER/CACHE/LAST_NUMBER (`ALL_SEQUENCES`) |
+| **SYNONYM** | 시노님 다이얼로그 — 참조 객체(OWNER.NAME) + DB_LINK (`ALL_SYNONYMS`) |
 
 ---
 
@@ -39,11 +40,11 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 | **Foreign Keys** | FK 및 참조 테이블 정보 |
 | **Indexes** | 인덱스명, 유니크 여부, 포함 컬럼 |
 | **Checks** | CHECK 제약 조건 |
+| **Triggers** | `ALL_TRIGGERS` 조회 결과 — 이름·유형·이벤트·상태·ACTION_TYPE |
 | **Data** | 실제 데이터 미리보기 — **500행 페이징** + `WHERE` / `ORDER BY` 필터 (Enter로 적용, 페이지 1로 리셋) |
-| **DDL** | `CREATE TABLE` 스크립트 + `COMMENT ON` |
+| **DDL** | `CREATE TABLE` (또는 VIEW면 `CREATE OR REPLACE VIEW`) 스크립트 + `COMMENT ON` |
 | **SELECT** | 전체 컬럼 `SELECT` 쿼리 |
 | **Comments SQL** | `ALL_COL_COMMENTS` 조회 쿼리 |
-| **Triggers SQL** | `ALL_TRIGGERS` 조회 쿼리 |
 
 #### Data 탭 동작 상세
 - `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` (Oracle 12c+) 기반 페이징
@@ -218,8 +219,10 @@ src/main/
 - [x] VIEW DDL 실제 본문 조회 (`ALL_VIEWS.TEXT`)
 - [x] PACKAGE 전용 다이얼로그 (Spec/Body/Routines/Errors)
 - [x] 다국어 (영문 기본 + 한국어, IDE locale 자동)
-- [ ] Triggers 탭 실제 데이터 조회
-- [ ] SEQUENCE / SYNONYM 전용 다이얼로그
+- [x] Triggers 탭 실제 데이터 조회 (`ALL_TRIGGERS`)
+- [x] SEQUENCE / SYNONYM 전용 다이얼로그
+- [x] Sessions Tool Window — Long Ops 탭 (`V$SESSION_LONGOPS`) + Wait History sub-tab (`V$SESSION_WAIT_HISTORY`)
+- [x] 컬럼 너비 사용자 조정값 저장 (`PropertiesComponent`)
 - [ ] 인라인 검색 (Ctrl+F) — 모든 테이블/Source에서
 - [ ] 컬럼 너비 사용자 조정값 저장
 - [ ] JetBrains 플러그인 마켓플레이스 배포

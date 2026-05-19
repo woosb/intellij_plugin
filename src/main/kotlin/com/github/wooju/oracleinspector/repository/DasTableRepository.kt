@@ -6,6 +6,7 @@ import com.github.wooju.oracleinspector.model.ForeignKeyInfo
 import com.github.wooju.oracleinspector.model.IndexInfo
 import com.github.wooju.oracleinspector.model.KeyInfo
 import com.github.wooju.oracleinspector.model.TableInfo
+import com.github.wooju.oracleinspector.model.TriggerInfo
 import com.intellij.database.model.DasColumn
 import com.intellij.database.model.DasConstraint
 import com.intellij.database.model.DasForeignKey
@@ -65,6 +66,7 @@ class DasTableRepository(
             foreignKeys = extractForeignKeys(),
             indexes = indexes,
             checks = extractChecks(),
+            triggers = extractTriggers(),
             isView = table.kind == ObjectKind.VIEW,
             viewDefinition = null,  // DAS 캐시는 VIEW 본문을 갖지 않음 → JDBC 폴백에서 채움
         )
@@ -104,6 +106,16 @@ class DasTableRepository(
         table.getDasChildren(ObjectKind.CHECK).map { chk ->
             val cols = (chk as? DasConstraint)?.columnsRef?.names()?.toList() ?: emptyList()
             CheckInfo(name = chk.name, columns = cols)
+        }.toList()
+
+    /** DAS는 트리거의 상세 속성(type/event/status)을 일관되게 노출하지 않으므로 이름만 채운다.
+     *  타입·이벤트·상태는 JDBC 폴백(JdbcTableMetadataRepository)에서 풍부하게 받는다. */
+    private fun extractTriggers(): List<TriggerInfo> =
+        table.getDasChildren(ObjectKind.TRIGGER).map { trig ->
+            TriggerInfo(
+                name = trig.name,
+                type = null, event = null, status = null, actionType = null,
+            )
         }.toList()
 
     /** MAX_SIZE(2147483646), NO_SIZE(-1), 0 등 의미없는 값은 null 반환 */

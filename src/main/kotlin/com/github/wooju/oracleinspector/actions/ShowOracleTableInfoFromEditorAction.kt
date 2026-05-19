@@ -3,6 +3,8 @@ package com.github.wooju.oracleinspector.actions
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.ui.OraclePackageInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleRoutineInfoDialog
+import com.github.wooju.oracleinspector.ui.OracleSequenceInfoDialog
+import com.github.wooju.oracleinspector.ui.OracleSynonymInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleTableInfoDialog
 import com.intellij.database.Dbms
 import com.intellij.database.model.DasObject
@@ -53,7 +55,13 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         /** PACKAGE — 전용 다이얼로그 있음 (Spec/Body/Routines/Errors). */
         class Pkg(val ds: DbDataSource, schema: String, name: String) :
             Candidate(schema, name, "PACKAGE")
-        /** 전용 다이얼로그가 없는 객체(SEQUENCE/SYNONYM 등)는 가벼운 팝업만. */
+        /** SEQUENCE — 경량 Property/Value 다이얼로그. */
+        class Seq(val ds: DbDataSource, schema: String, name: String) :
+            Candidate(schema, name, "SEQUENCE")
+        /** SYNONYM — 경량 Property/Value 다이얼로그. */
+        class Syn(val ds: DbDataSource, schema: String, name: String) :
+            Candidate(schema, name, "SYNONYM")
+        /** 그 외 종류 (현재 시점에 없음 — 미래 확장용) JBPopup 폴백. */
         class Meta(schema: String, name: String, kind: String) : Candidate(schema, name, kind)
 
         fun display(): String = "$schema.$name  ($kind)"
@@ -201,9 +209,21 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
                 } catch (t: Throwable) {
                     LOG.debug("PACKAGE 수집 실패 — 무시: ${t.message}")
                 }
-                // SEQUENCE / SYNONYM — 전용 다이얼로그 없음 → 메타 팝업
-                addMetaCandidates(schema, ObjectKind.SEQUENCE, "SEQUENCE", selected, out)
-                addMetaCandidates(schema, ObjectKind.SYNONYM, "SYNONYM", selected, out)
+                // SEQUENCE / SYNONYM — 경량 전용 다이얼로그
+                try {
+                    schema.getDasChildren(ObjectKind.SEQUENCE)
+                        .filter { it.name.equals(selected, ignoreCase = true) }
+                        .forEach { das -> out += Candidate.Seq(ds, schema.name, das.name) }
+                } catch (t: Throwable) {
+                    LOG.debug("SEQUENCE 수집 실패 — 무시: ${t.message}")
+                }
+                try {
+                    schema.getDasChildren(ObjectKind.SYNONYM)
+                        .filter { it.name.equals(selected, ignoreCase = true) }
+                        .forEach { das -> out += Candidate.Syn(ds, schema.name, das.name) }
+                } catch (t: Throwable) {
+                    LOG.debug("SYNONYM 수집 실패 — 무시: ${t.message}")
+                }
             }
         }
         return out
@@ -231,6 +251,8 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
             is Candidate.Tab -> OracleTableInfoDialog(project, c.table, c.schema, c.name).show()
             is Candidate.Rtn -> OracleRoutineInfoDialog(project, c.routine, c.schema, c.name).show()
             is Candidate.Pkg -> OraclePackageInfoDialog(project, c.ds, c.schema, c.name).show()
+            is Candidate.Seq -> OracleSequenceInfoDialog(project, c.ds, c.schema, c.name).show()
+            is Candidate.Syn -> OracleSynonymInfoDialog(project, c.ds, c.schema, c.name).show()
             is Candidate.Meta -> showMetaPopup(editor, c)
         }
     }

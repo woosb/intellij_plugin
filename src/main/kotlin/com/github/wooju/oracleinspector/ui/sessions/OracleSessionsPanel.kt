@@ -2,8 +2,11 @@ package com.github.wooju.oracleinspector.ui.sessions
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.LockInfo
+import com.github.wooju.oracleinspector.model.LongOpInfo
 import com.github.wooju.oracleinspector.model.SessionInfo
+import com.github.wooju.oracleinspector.model.WaitEvent
 import com.github.wooju.oracleinspector.repository.JdbcSessionRepository
+import com.github.wooju.oracleinspector.ui.ColumnWidthMemo
 import com.github.wooju.oracleinspector.ui.DictionaryTableModel
 import com.intellij.database.Dbms
 import com.intellij.database.psi.DbDataSource
@@ -64,6 +67,7 @@ private val LOG = logger<OracleSessionsPanel>()
 private const val AUTO_REFRESH_MILLIS = 5_000
 private const val TAB_SESSIONS = "Sessions"
 private const val TAB_LOCKS = "Locks"
+private const val TAB_LONG_OPS = "Long Ops"
 
 class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
 
@@ -103,13 +107,35 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     private var locks: List<LockInfo> = emptyList()
     private val locksTable = JBTable(DictionaryTableModel.empty(lockColumns))
 
+    // ── Long Ops 탭 ──────────────────────────────────────────────────────────
+    private val longOpColumns = listOf(
+        "SID", "SERIAL#", "USER", "OPERATION", "TARGET",
+        "PROGRESS", "SOFAR", "TOTAL", "UNITS", "ELAPSED", "REMAINING", "MESSAGE",
+    )
+    private var longOps: List<LongOpInfo> = emptyList()
+    private val longOpsTable = JBTable(DictionaryTableModel.empty(longOpColumns))
+
+    // ── Wait History (Sessions 탭 하단 sub-tab) ──────────────────────────────
+    private val waitColumns = listOf("SEQ#", "EVENT", "WAIT_TIME (cs)", "P1", "P2", "P3")
+    private var waits: List<WaitEvent> = emptyList()
+    private val waitsTable = JBTable(DictionaryTableModel.empty(waitColumns))
+
     init {
         sessionsTable.commonInit(SessionsCellRenderer())
         locksTable.commonInit(LocksCellRenderer())
+        longOpsTable.commonInit(LongOpsCellRenderer())
+        waitsTable.commonInit(object : StripedRenderer() {
+            override fun decorate(tbl: JTable, row: Int, modelRow: Int, value: Any?, isSelected: Boolean) {
+                if (!isSelected) background = if (row % 2 == 0) evenBg else oddBg
+            }
+        })
 
-        // Sessions: 행 선택 → SQL 패널 갱신
+        // Sessions: 행 선택 → Current SQL + Wait History 동시 갱신
         sessionsTable.selectionModel.addListSelectionListener {
-            if (!it.valueIsAdjusting) loadCurrentSqlForSelected()
+            if (!it.valueIsAdjusting) {
+                loadCurrentSqlForSelected()
+                loadWaitHistoryForSelected()
+            }
         }
 
         // Sessions: 우클릭 → Kill Session
@@ -204,19 +230,17 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
             add(right, BorderLayout.EAST)
         }
 
-        // ── Sessions 탭 빌드 ──────────────────────────────────────────────────
+        // ── Sessions 탭 빌드 (하단은 Current SQL / Wait History sub-tab) ─────
+        val detailTabs = JBTabbedPane().apply {
+            addTab(OracleInspectorBundle.message("sessions.label.current.sql"), sqlEditor.component)
+            addTab(OracleInspectorBundle.message("sessions.label.wait.history"), JBScrollPane(waitsTable))
+        }
         val sessionsTab = JPanel(BorderLayout()).apply {
             add(buildSessionFilterRow(), BorderLayout.NORTH)
             add(
                 OnePixelSplitter(true, 0.6f).apply {
                     firstComponent = JBScrollPane(sessionsTable)
-                    secondComponent = JPanel(BorderLayout()).apply {
-                        add(JBLabel(OracleInspectorBundle.message("sessions.label.current.sql")).apply {
-                            font = font.deriveFont(Font.BOLD, 11f)
-                            border = BorderFactory.createEmptyBorder(2, 6, 2, 0)
-                        }, BorderLayout.NORTH)
-                        add(sqlEditor.component, BorderLayout.CENTER)
-                    }
+                    secondComponent = detailTabs
                 },
                 BorderLayout.CENTER,
             )
@@ -227,8 +251,14 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
             add(JBScrollPane(locksTable), BorderLayout.CENTER)
         }
 
+        // ── Long Ops 탭 빌드 ──────────────────────────────────────────────────
+        val longOpsTab = JPanel(BorderLayout()).apply {
+            add(JBScrollPane(longOpsTable), BorderLayout.CENTER)
+        }
+
         tabs.addTab(TAB_SESSIONS, sessionsTab)
         tabs.addTab(TAB_LOCKS, locksTab)
+        tabs.addTab(TAB_LONG_OPS, longOpsTab)
         tabs.addChangeListener {
             // 탭을 처음 열 때 자동 로드 (이미 로딩 중이거나 DS가 없으면 스킵)
             reloadActiveTab()
@@ -318,6 +348,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         when (currentTab()) {
             TAB_SESSIONS -> reloadSessions()
             TAB_LOCKS -> reloadLocks()
+            TAB_LONG_OPS -> reloadLongOps()
         }
     }
 
@@ -379,6 +410,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         sorter.rowFilter = makeSessionRowFilter()
         sessionsTable.rowSorter = sorter
         autoFitColumns(sessionsTable, newModel)
+        ColumnWidthMemo.apply(sessionsTable, "sessions.list")
         statusLabel.text = OracleInspectorBundle.message(
             "sessions.status.count.with.time", list.size, java.time.LocalTime.now().withNano(0),
         )
@@ -507,6 +539,100 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         )
     }
 
+    // ── Long Ops 로딩 ────────────────────────────────────────────────────────
+    private fun reloadLongOps() {
+        val ds = selectedDs() ?: return
+        if (loading) return
+        loading = true
+        setBusy(true, OracleInspectorBundle.message("sessions.longops.status.loading"))
+
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("sessions.longops.task.title"), true) {
+            private var fetched: List<LongOpInfo>? = null
+            private var failure: Throwable? = null
+
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                try { fetched = JdbcSessionRepository(project, ds).loadLongOps() }
+                catch (t: Throwable) {
+                    LOG.warn("Long Ops 조회 실패", t)
+                    failure = t
+                }
+            }
+
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    loading = false
+                    setBusy(false, "")
+                    val ok = fetched
+                    val err = failure
+                    when {
+                        ok != null -> renderLongOps(ok)
+                        err != null -> notifyError(humanizeError(err))
+                    }
+                    if (autoToggle.isSelected && !alarm.isDisposed) scheduleAutoRefresh()
+                }
+            }
+        }.queue()
+    }
+
+    private fun renderLongOps(list: List<LongOpInfo>) {
+        longOps = list
+        val rows = list.map { op ->
+            val pct = op.progressPercent()
+            listOf(
+                op.sid, op.serial, op.username ?: "",
+                op.opname ?: "", op.target ?: "",
+                if (pct == null) "" else "$pct%",
+                op.sofar, op.totalwork, op.units ?: "",
+                op.elapsedSec ?: 0L, op.timeRemainingSec ?: 0L,
+                op.message ?: "",
+            )
+        }
+        val newModel = DictionaryTableModel(longOpColumns, rows)
+        longOpsTable.model = newModel
+        longOpsTable.rowSorter = TableRowSorter(newModel)
+        autoFitColumns(longOpsTable, newModel)
+        statusLabel.text = OracleInspectorBundle.message(
+            "sessions.longops.status.count.with.time", list.size, java.time.LocalTime.now().withNano(0),
+        )
+    }
+
+    // ── Wait History 로딩 (선택 세션 기준) ──────────────────────────────────
+    private fun loadWaitHistoryForSelected() {
+        val s = selectedSession()
+        if (s == null) {
+            waits = emptyList()
+            waitsTable.model = DictionaryTableModel.empty(waitColumns)
+            return
+        }
+        val ds = selectedDs() ?: return
+        object : Task.Backgroundable(
+            project,
+            OracleInspectorBundle.message("sessions.waits.task.title", s.sid),
+            true,
+        ) {
+            private var fetched: List<WaitEvent>? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                try { fetched = JdbcSessionRepository(project, ds).loadWaitHistory(s.sid) }
+                catch (t: Throwable) { LOG.warn("Wait history 조회 실패", t) }
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    val list = fetched ?: emptyList()
+                    waits = list
+                    val rows = list.map { w ->
+                        listOf(w.seq, w.event ?: "", w.waitTime ?: 0L, w.p1 ?: "", w.p2 ?: "", w.p3 ?: "")
+                    }
+                    val newModel = DictionaryTableModel(waitColumns, rows)
+                    waitsTable.model = newModel
+                    waitsTable.rowSorter = TableRowSorter(newModel)
+                    autoFitColumns(waitsTable, newModel)
+                }
+            }
+        }.queue()
+    }
+
     private fun selectedLock(): LockInfo? {
         val viewRow = locksTable.selectedRow.takeIf { it >= 0 } ?: return null
         val modelRow = locksTable.convertRowIndexToModel(viewRow)
@@ -630,6 +756,22 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                     l?.lockMode == "Exclusive" || l?.lockMode == "Row-X" -> strongBg
                     row % 2 == 0 -> evenBg
                     else -> oddBg
+                }
+            }
+        }
+    }
+
+    // ── 셀 렌더러: Long Ops (Progress 컬럼만 진행률 그라데이션) ──────────────
+    private inner class LongOpsCellRenderer : StripedRenderer() {
+        private val progressBg = JBColor(Color(220, 240, 255), Color(40, 70, 95))
+        override fun decorate(tbl: JTable, row: Int, modelRow: Int, value: Any?, isSelected: Boolean) {
+            if (!isSelected) {
+                background = if (row % 2 == 0) evenBg else oddBg
+                // PROGRESS 컬럼이면 살짝 강조
+                val colName = tbl.columnModel.getColumn(tbl.convertColumnIndexToModel(0)).headerValue
+                if (value is String && value.endsWith("%")) {
+                    background = progressBg
+                    horizontalAlignment = SwingConstants.RIGHT
                 }
             }
         }
