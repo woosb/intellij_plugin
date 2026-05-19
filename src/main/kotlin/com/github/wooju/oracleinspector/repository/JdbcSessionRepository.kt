@@ -2,7 +2,9 @@ package com.github.wooju.oracleinspector.repository
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.LockInfo
+import com.github.wooju.oracleinspector.model.LongOpInfo
 import com.github.wooju.oracleinspector.model.SessionInfo
+import com.github.wooju.oracleinspector.model.WaitEvent
 import com.intellij.database.dataSource.DatabaseConnectionManager
 import com.intellij.database.dataSource.LocalDataSource
 import com.intellij.database.psi.DbDataSource
@@ -138,6 +140,75 @@ class JdbcSessionRepository(
                         objectType = rs.getString(13),
                         lockMode = rs.getString(14),
                         blockingSession = nullableInt(rs, 15),
+                    )
+                }
+                out
+            }
+        }
+    }
+
+    /**
+     * V$SESSION_LONGOPS 기반 장시간 작업 목록.
+     * 기본은 "아직 진행 중인 것"만 (SOFAR < TOTALWORK).
+     */
+    fun loadLongOps(onlyActive: Boolean = true): List<LongOpInfo> {
+        return withConnection { conn ->
+            val sql = buildString {
+                append(
+                    """
+                    SELECT
+                      SID, SERIAL#, USERNAME,
+                      OPNAME, TARGET,
+                      SOFAR, TOTALWORK, UNITS,
+                      ELAPSED_SECONDS, TIME_REMAINING,
+                      MESSAGE
+                    FROM V${'$'}SESSION_LONGOPS
+                    """.trimIndent()
+                )
+                if (onlyActive) append("\nWHERE TOTALWORK > 0 AND SOFAR < TOTALWORK")
+                append("\nORDER BY START_TIME DESC")
+            }
+            executeQuery(conn, sql) { rs ->
+                val out = ArrayList<LongOpInfo>()
+                while (rs.next()) {
+                    out += LongOpInfo(
+                        sid = rs.getInt(1),
+                        serial = rs.getLong(2),
+                        username = rs.getString(3),
+                        opname = rs.getString(4),
+                        target = rs.getString(5),
+                        sofar = rs.getLong(6),
+                        totalwork = rs.getLong(7),
+                        units = rs.getString(8),
+                        elapsedSec = nullableLong(rs, 9),
+                        timeRemainingSec = nullableLong(rs, 10),
+                        message = rs.getString(11),
+                    )
+                }
+                out
+            }
+        }
+    }
+
+    /** 선택 세션의 최근 wait event 10건 (V$SESSION_WAIT_HISTORY). 빈 결과면 emptyList. */
+    fun loadWaitHistory(sid: Int): List<WaitEvent> {
+        return withConnection { conn ->
+            val sql = """
+                SELECT SEQ#, EVENT, WAIT_TIME, P1, P2, P3
+                FROM V${'$'}SESSION_WAIT_HISTORY
+                WHERE SID = ?
+                ORDER BY SEQ#
+            """.trimIndent()
+            executePrepared(conn, sql, listOf(sid.toString())) { rs ->
+                val out = ArrayList<WaitEvent>()
+                while (rs.next()) {
+                    out += WaitEvent(
+                        seq = rs.getInt(1),
+                        event = rs.getString(2),
+                        waitTime = nullableLong(rs, 3),
+                        p1 = rs.getString(4),
+                        p2 = rs.getString(5),
+                        p3 = rs.getString(6),
                     )
                 }
                 out

@@ -83,6 +83,15 @@ object OracleDictionaryService {
         return DictionaryTableModel(headers, rows)
     }
 
+    // ── Triggers ─────────────────────────────────────────────────────────────
+    fun buildTriggersModel(info: TableInfo): DictionaryTableModel {
+        val headers = listOf("Trigger Name", "Type", "Event", "Status", "Action Type")
+        val rows = info.triggers.map { t ->
+            listOf(t.name, t.type, t.event, t.status, t.actionType)
+        }
+        return DictionaryTableModel(headers, rows)
+    }
+
     // ── DDL ──────────────────────────────────────────────────────────────────
     fun buildDdl(info: TableInfo): String {
         val schema = info.schema.uppercase()

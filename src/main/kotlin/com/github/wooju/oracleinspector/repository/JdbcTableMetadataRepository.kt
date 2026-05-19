@@ -2,6 +2,7 @@ package com.github.wooju.oracleinspector.repository
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.CheckInfo
+import com.github.wooju.oracleinspector.model.TriggerInfo
 import com.github.wooju.oracleinspector.model.ColumnInfo
 import com.github.wooju.oracleinspector.model.ForeignKeyInfo
 import com.github.wooju.oracleinspector.model.IndexInfo
@@ -58,6 +59,7 @@ class JdbcTableMetadataRepository(
         val keys = if (isView) emptyList() else queryKeys(conn, owner, name)
         val foreignKeys = if (isView) emptyList() else queryForeignKeys(conn, owner, name)
         val checks = if (isView) emptyList() else queryChecks(conn, owner, name)
+        val triggers = queryTriggers(conn, owner, name)  // VIEW에도 INSTEAD OF 트리거 가능
 
         return TableInfo(
             schema = schemaName,
@@ -68,9 +70,32 @@ class JdbcTableMetadataRepository(
             foreignKeys = foreignKeys,
             indexes = indexes,
             checks = checks,
+            triggers = triggers,
             isView = isView,
             viewDefinition = viewDefinition,
         )
+    }
+
+    private fun queryTriggers(conn: RemoteConnection, owner: String, name: String): List<TriggerInfo> {
+        val sql = """
+            SELECT TRIGGER_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, STATUS, ACTION_TYPE
+            FROM ALL_TRIGGERS
+            WHERE OWNER = ? AND TABLE_NAME = ?
+            ORDER BY TRIGGER_NAME
+        """.trimIndent()
+        return executeQuery(conn, sql, owner, name) { rs ->
+            val out = ArrayList<TriggerInfo>()
+            while (rs.next()) {
+                out += TriggerInfo(
+                    name = rs.getString(1) ?: "",
+                    type = rs.getString(2),
+                    event = rs.getString(3),
+                    status = rs.getString(4),
+                    actionType = rs.getString(5),
+                )
+            }
+            out
+        }
     }
 
     /** OBJECT_TYPE 반환 ("TABLE" / "VIEW" / null). MAT VIEW 등은 TABLE로 취급. */

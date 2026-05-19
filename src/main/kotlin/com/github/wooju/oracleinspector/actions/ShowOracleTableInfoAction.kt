@@ -2,6 +2,8 @@ package com.github.wooju.oracleinspector.actions
 
 import com.github.wooju.oracleinspector.ui.OraclePackageInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleRoutineInfoDialog
+import com.github.wooju.oracleinspector.ui.OracleSequenceInfoDialog
+import com.github.wooju.oracleinspector.ui.OracleSynonymInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleTableInfoDialog
 import com.intellij.database.Dbms
 import com.intellij.database.model.DasObject
@@ -49,6 +51,12 @@ class ShowOracleTableInfoAction : AnAction() {
             element.kind == ObjectKind.PACKAGE -> {
                 openPackage(project, element)
             }
+            element.kind == ObjectKind.SEQUENCE -> {
+                openSequence(project, element)
+            }
+            element.kind == ObjectKind.SYNONYM -> {
+                openSynonym(project, element)
+            }
         }
     }
 
@@ -64,6 +72,8 @@ class ShowOracleTableInfoAction : AnAction() {
             element is DasTable -> true
             element is DasRoutine && element.packageName.isNullOrBlank() -> true
             element.kind == ObjectKind.PACKAGE -> true
+            element.kind == ObjectKind.SEQUENCE -> true
+            element.kind == ObjectKind.SYNONYM -> true
             else -> false
         }
         if (!isSupported) {
@@ -88,13 +98,28 @@ class ShowOracleTableInfoAction : AnAction() {
 
     private fun openPackage(project: Project, pkg: DasObject) {
         val schema = pkg.dasParent?.name ?: "UNKNOWN"
-        val ds = (DbPsiFacade.getInstance(project).findElement(pkg) as? DbElement)?.dataSource ?: run {
+        val ds = dataSourceOf(project, pkg) ?: run {
             LOG.warn("openPackage: 데이터소스를 찾을 수 없음 ($schema.${pkg.name})")
             return
         }
         LOG.info("Opening package dialog: $schema.${pkg.name}")
         OraclePackageInfoDialog(project, ds, schema, pkg.name).show()
     }
+
+    private fun openSequence(project: Project, seq: DasObject) {
+        val schema = seq.dasParent?.name ?: "UNKNOWN"
+        val ds = dataSourceOf(project, seq) ?: return
+        OracleSequenceInfoDialog(project, ds, schema, seq.name).show()
+    }
+
+    private fun openSynonym(project: Project, syn: DasObject) {
+        val schema = syn.dasParent?.name ?: "UNKNOWN"
+        val ds = dataSourceOf(project, syn) ?: return
+        OracleSynonymInfoDialog(project, ds, schema, syn.name).show()
+    }
+
+    private fun dataSourceOf(project: Project, das: DasObject) =
+        (DbPsiFacade.getInstance(project).findElement(das) as? DbElement)?.dataSource
 
     /** DAS 객체로부터 DBMS 종류 판별 — DbPsiFacade로 일반 DbElement 변환 후 dataSource. */
     private fun dbmsOf(project: Project, das: DasObject): Dbms? {

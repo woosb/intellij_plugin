@@ -125,11 +125,11 @@ class OracleTableInfoDialog(
         addTab("Foreign Keys", OracleDictionaryService.buildForeignKeysModel(info))
         addTab("Indexes",      OracleDictionaryService.buildIndexesModel(info))
         addTab("Checks",       OracleDictionaryService.buildChecksModel(info))
+        addTab("Triggers",     OracleDictionaryService.buildTriggersModel(info))
         tabs.addTab("Data",         dataPanel ?: createDataPanel().also { dataPanel = it })
         tabs.addTab("DDL",          createSqlPanel(OracleDictionaryService.buildDdl(info)))
         tabs.addTab("SELECT",       createSqlPanel(OracleDictionaryService.buildSelectQuery(info)))
         tabs.addTab("Comments SQL", createSqlPanel(OracleDictionaryService.commentsQuery(schemaName, tableName)))
-        tabs.addTab("Triggers SQL", createSqlPanel(OracleDictionaryService.triggersQuery(schemaName, tableName)))
     }
 
     // ── JDBC 재로딩 (백그라운드) ──────────────────────────────────────────────
@@ -196,6 +196,12 @@ class OracleTableInfoDialog(
     }
 
     // ── 테이블 패널 ───────────────────────────────────────────────────────────
+    private fun tabIdFor(model: DictionaryTableModel): String {
+        // 첫 컬럼명 기반으로 안정적 ID 생성 (탭별로 컬럼 구성이 다르기 때문)
+        val firstCol = model.getColumnName(0).lowercase().replace(' ', '_')
+        return "table.$firstCol"
+    }
+
     private fun createTablePanel(model: DictionaryTableModel): JComponent {
         val sorter = object : TableRowSorter<DictionaryTableModel>(model) {
             // 클릭 사이클: 미정렬 → 오름차순 → 내림차순 → 미정렬
@@ -224,6 +230,7 @@ class OracleTableInfoDialog(
             setDefaultRenderer(Any::class.java, StripedCellRenderer(SwingConstants.LEFT))
         }
         autoFitColumns(jbTable, model)
+        ColumnWidthMemo.apply(jbTable, tabIdFor(model))
         return JBScrollPane(jbTable)
     }
 
