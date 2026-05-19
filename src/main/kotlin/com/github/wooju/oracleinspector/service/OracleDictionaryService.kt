@@ -87,6 +87,26 @@ object OracleDictionaryService {
     fun buildDdl(info: TableInfo): String {
         val schema = info.schema.uppercase()
         val table = info.name.uppercase()
+
+        // VIEW면 ALL_VIEWS.TEXT 본문 그대로 CREATE OR REPLACE VIEW 로 감싸 반환.
+        // 본문이 비어있으면 (DAS 캐시만 있어 viewDefinition 미수집) 안내 텍스트.
+        if (info.isView) {
+            val sb = StringBuilder()
+            sb.append("CREATE OR REPLACE VIEW $schema.$table AS\n")
+            val body = info.viewDefinition?.takeIf { it.isNotBlank() }
+            sb.append(body ?: "-- (VIEW 본문 미수집 — 새로고침 버튼으로 JDBC 조회를 실행하세요)")
+            if (body != null && !body.trimEnd().endsWith(";")) sb.append(';')
+            info.comment?.takeIf { it.isNotBlank() }?.let {
+                sb.append("\n\nCOMMENT ON TABLE $schema.$table IS '$it';")
+            }
+            for (col in info.columns) {
+                col.comment?.takeIf { it.isNotBlank() }?.let {
+                    sb.append("\nCOMMENT ON COLUMN $schema.$table.${col.name} IS '$it';")
+                }
+            }
+            return sb.toString()
+        }
+
         val sb = StringBuilder()
         sb.append("CREATE TABLE $schema.$table (\n")
 

@@ -50,6 +50,10 @@ data class TableInfo(
     val foreignKeys: List<ForeignKeyInfo>,
     val indexes: List<IndexInfo>,
     val checks: List<CheckInfo>,
+    /** ObjectKind == VIEW 면 true. DDL/탭 표시 분기에 사용. */
+    val isView: Boolean = false,
+    /** VIEW 일 때 ALL_VIEWS.TEXT 본문. JDBC 폴백에서만 채워짐. */
+    val viewDefinition: String? = null,
 ) {
     /**
      * 캐시 데이터가 불완전한지 판정한다.

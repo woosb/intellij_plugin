@@ -44,15 +44,20 @@ class JdbcTableMetadataRepository(
         val owner = schemaName.uppercase()
         val name = tableName.uppercase()
 
+        // ALL_OBJECTS로 TABLE/VIEW 종류부터 판별 — ALL_VIEWS는 VIEW일 때만 의미
+        val objectType = queryObjectType(conn, owner, name)
+        val isView = objectType == "VIEW"
+        val viewDefinition = if (isView) queryViewDefinition(conn, owner, name) else null
+
         val tableComment = queryTableComment(conn, owner, name)
         val columnComments = queryColumnComments(conn, owner, name)
         val pkPositions = queryPkPositions(conn, owner, name)
-        val indexes = queryIndexes(conn, owner, name)
+        val indexes = if (isView) emptyList() else queryIndexes(conn, owner, name)
         val indexedColumns = indexes.flatMap { it.columns.map { c -> c.uppercase() } }.toSet()
         val columns = queryColumns(conn, owner, name, columnComments, pkPositions, indexedColumns)
-        val keys = queryKeys(conn, owner, name)
-        val foreignKeys = queryForeignKeys(conn, owner, name)
-        val checks = queryChecks(conn, owner, name)
+        val keys = if (isView) emptyList() else queryKeys(conn, owner, name)
+        val foreignKeys = if (isView) emptyList() else queryForeignKeys(conn, owner, name)
+        val checks = if (isView) emptyList() else queryChecks(conn, owner, name)
 
         return TableInfo(
             schema = schemaName,
@@ -63,7 +68,35 @@ class JdbcTableMetadataRepository(
             foreignKeys = foreignKeys,
             indexes = indexes,
             checks = checks,
+            isView = isView,
+            viewDefinition = viewDefinition,
         )
+    }
+
+    /** OBJECT_TYPE 반환 ("TABLE" / "VIEW" / null). MAT VIEW 등은 TABLE로 취급. */
+    private fun queryObjectType(conn: RemoteConnection, owner: String, name: String): String? {
+        val sql = """
+            SELECT OBJECT_TYPE FROM ALL_OBJECTS
+            WHERE OWNER = ? AND OBJECT_NAME = ?
+              AND OBJECT_TYPE IN ('TABLE', 'VIEW')
+            ORDER BY DECODE(OBJECT_TYPE, 'TABLE', 1, 'VIEW', 2, 9)
+            FETCH FIRST 1 ROWS ONLY
+        """.trimIndent()
+        return executeQuery(conn, sql, owner, name) { rs ->
+            if (rs.next()) rs.getString(1) else null
+        }
+    }
+
+    /** ALL_VIEWS.TEXT (CLOB) 본문. 권한 없으면 ORA-00942 → null로 폴백. */
+    private fun queryViewDefinition(conn: RemoteConnection, owner: String, name: String): String? {
+        val sql = "SELECT TEXT FROM ALL_VIEWS WHERE OWNER = ? AND VIEW_NAME = ?"
+        return try {
+            executeQuery(conn, sql, owner, name) { rs ->
+                if (rs.next()) rs.getString(1)?.trim() else null
+            }
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun queryTableComment(conn: RemoteConnection, owner: String, name: String): String? {

@@ -65,6 +65,8 @@ class DasTableRepository(
             foreignKeys = extractForeignKeys(),
             indexes = indexes,
             checks = extractChecks(),
+            isView = table.kind == ObjectKind.VIEW,
+            viewDefinition = null,  // DAS 캐시는 VIEW 본문을 갖지 않음 → JDBC 폴백에서 채움
         )
     }
 

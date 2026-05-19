@@ -22,9 +22,11 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 
 | 종류 | 결과 |
 |------|------|
-| **TABLE / VIEW** | 테이블 정보 다이얼로그 (아래) |
+| **TABLE** | 테이블 정보 다이얼로그 (아래) |
+| **VIEW** | 테이블 정보 다이얼로그 — DDL 탭은 `ALL_VIEWS.TEXT` 기반 `CREATE OR REPLACE VIEW` |
 | **PROCEDURE / FUNCTION** (standalone) | 프로시저·펑션 다이얼로그 (아래) |
-| **PACKAGE / SEQUENCE / SYNONYM** | 가벼운 `JBPopup`으로 메타 정보 표시 |
+| **PACKAGE** | 패키지 다이얼로그 — Spec / Body / Routines / Errors |
+| **SEQUENCE / SYNONYM** | 가벼운 `JBPopup`으로 메타 정보 표시 |
 
 ---
 
@@ -50,6 +52,15 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 - BLOB / 바이너리 타입은 `<BINARY N bytes>` placeholder
 
 ---
+
+### 패키지 다이얼로그
+
+| 탭 | 내용 |
+|----|------|
+| **Spec** | `ALL_SOURCE TYPE='PACKAGE'` — IntelliJ Editor (라인 번호, 신택스, **해당 영역의 컴파일 오류 라인 강조**) |
+| **Body** | `ALL_SOURCE TYPE='PACKAGE BODY'` — 없으면 안내 텍스트. Body 오류만 별도로 강조 |
+| **Routines** | `ALL_PROCEDURES` — 패키지 내부 PROCEDURE / FUNCTION 목록 (이름·오버로드·종류) |
+| **Errors** | `ALL_ERRORS TYPE IN ('PACKAGE','PACKAGE BODY')` — 행 더블클릭 시 해당 Spec/Body 탭으로 점프 |
 
 ### 프로시저·펑션 다이얼로그
 
@@ -154,8 +165,11 @@ src/main/
 - [x] Data 탭 (500행 페이징 + WHERE/ORDER BY 필터)
 - [x] Source 에디터 (라인 번호 + 신택스 + 에러 라인 강조)
 - [x] Describe 액션 확장 (VIEW/PACKAGE/SEQUENCE/SYNONYM + OWNER 우선)
+- [x] VIEW DDL 실제 본문 조회 (`ALL_VIEWS.TEXT`)
+- [x] PACKAGE 전용 다이얼로그 (Spec/Body/Routines/Errors)
+- [x] 다국어 (영문 기본 + 한국어, IDE locale 자동)
 - [ ] Triggers 탭 실제 데이터 조회
-- [ ] PACKAGE / SEQUENCE / SYNONYM 전용 다이얼로그
+- [ ] SEQUENCE / SYNONYM 전용 다이얼로그
 - [ ] 인라인 검색 (Ctrl+F) — 모든 테이블/Source에서
 - [ ] 컬럼 너비 사용자 조정값 저장
 - [ ] JetBrains 플러그인 마켓플레이스 배포
