@@ -61,8 +61,16 @@ git push -u origin "$branch"
 printf '\033[1m==> create PR (base=%s)\033[0m\n' "$base"
 gh pr create --base "$base" --head "$branch" --fill
 
-printf '\033[1m==> squash merge + delete remote branch\033[0m\n'
-gh pr merge "$branch" --squash --delete-branch
+printf '\033[1m==> squash merge\033[0m\n'
+# Note: --delete-branch would trigger a local checkout of the base inside this
+# worktree, which fails when the base is already checked out in another worktree
+# (Claude Code's typical setup). We skip it and delete the remote branch
+# explicitly below — the local branch can be pruned manually if desired.
+gh pr merge "$branch" --squash
+
+printf '\033[1m==> delete remote branch\033[0m\n'
+git push origin --delete "$branch"
 
 printf '\n\033[32mDone.\033[0m Remember to pull on your main worktree:\n'
-printf "  git -C <main-worktree> pull --ff-only origin %s\n" "$base"
+printf "  git -C <main-worktree> pull --ff-only origin %s\n\n" "$base"
+printf 'Local branch %s is kept; prune later with:\n  git branch -D %s\n' "$branch" "$branch"
