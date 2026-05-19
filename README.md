@@ -111,6 +111,38 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 
 ---
 
+## 다른 맥북에서 처음 시작할 때 (Setup on a new Mac)
+
+새 머신에서 클론한 직후 1회만 수행하면 됩니다.
+
+```bash
+# 1) 저장소 클론
+git clone git@github.com:woosb/intellij_plugin.git
+cd intellij_plugin
+
+# 2) JDK 21 설치 (Temurin) — Kotlin 컴파일러가 JDK 25 버전 문자열 파싱 못 함
+brew install --cask temurin@21
+# 설치 경로 예시:
+#   ~/Library/Java/JavaVirtualMachines/jdk-21.x.x+xx
+
+# 3) gradle.properties의 JDK 경로를 본인 환경에 맞게 조정
+#    파일: gradle.properties
+#    예:   org.gradle.java.home=/Users/<you>/Library/Java/JavaVirtualMachines/jdk-21.0.5+11
+
+# 4) GitHub CLI 설치 + 인증 (PR/머지 자동화 스크립트 사용에 필요)
+brew install gh
+gh auth login --git-protocol https --web
+# → GitHub.com 선택 → "Yes" → 8자리 코드 → 브라우저에서 Authorize
+
+# 5) (선택) 사전 검증
+./gradlew compileKotlin
+./gradlew runIde            # 샌드박스 IDE 띄워서 동작 확인
+```
+
+> **macOS 외 OS**: 본 프로젝트는 macOS 기준으로 검증되어 있습니다. Linux/Windows에서도 JDK 21 + Gradle 8.10 wrapper로 빌드는 가능하지만, `gradle.properties`의 JDK 경로와 일부 IntelliJ 동작 (`runIde`의 IDE bundle 다운로드)이 OS별로 다를 수 있습니다.
+
+---
+
 ## 빌드 & 실행
 
 ```bash
