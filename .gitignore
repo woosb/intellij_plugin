@@ -23,5 +23,9 @@ Thumbs.db
 # Secrets / local overrides
 local.properties
 
-# Claude Code (local agent settings & memory)
-.claude/
+# Claude Code — share project-level config, ignore per-user / transient files
+.claude/settings.local.json
+.claude/worktrees/
+.claude/cache/
+.claude/logs/
+.claude/*.log

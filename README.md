@@ -22,9 +22,11 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 
 | 종류 | 결과 |
 |------|------|
-| **TABLE / VIEW** | 테이블 정보 다이얼로그 (아래) |
+| **TABLE** | 테이블 정보 다이얼로그 (아래) |
+| **VIEW** | 테이블 정보 다이얼로그 — DDL 탭은 `ALL_VIEWS.TEXT` 기반 `CREATE OR REPLACE VIEW` |
 | **PROCEDURE / FUNCTION** (standalone) | 프로시저·펑션 다이얼로그 (아래) |
-| **PACKAGE / SEQUENCE / SYNONYM** | 가벼운 `JBPopup`으로 메타 정보 표시 |
+| **PACKAGE** | 패키지 다이얼로그 — Spec / Body / Routines / Errors |
+| **SEQUENCE / SYNONYM** | 가벼운 `JBPopup`으로 메타 정보 표시 |
 
 ---
 
@@ -50,6 +52,15 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 - BLOB / 바이너리 타입은 `<BINARY N bytes>` placeholder
 
 ---
+
+### 패키지 다이얼로그
+
+| 탭 | 내용 |
+|----|------|
+| **Spec** | `ALL_SOURCE TYPE='PACKAGE'` — IntelliJ Editor (라인 번호, 신택스, **해당 영역의 컴파일 오류 라인 강조**) |
+| **Body** | `ALL_SOURCE TYPE='PACKAGE BODY'` — 없으면 안내 텍스트. Body 오류만 별도로 강조 |
+| **Routines** | `ALL_PROCEDURES` — 패키지 내부 PROCEDURE / FUNCTION 목록 (이름·오버로드·종류) |
+| **Errors** | `ALL_ERRORS TYPE IN ('PACKAGE','PACKAGE BODY')` — 행 더블클릭 시 해당 Spec/Body 탭으로 점프 |
 
 ### 프로시저·펑션 다이얼로그
 
@@ -100,6 +111,38 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 
 ---
 
+## 다른 맥북에서 처음 시작할 때 (Setup on a new Mac)
+
+새 머신에서 클론한 직후 1회만 수행하면 됩니다.
+
+```bash
+# 1) 저장소 클론
+git clone git@github.com:woosb/intellij_plugin.git
+cd intellij_plugin
+
+# 2) JDK 21 설치 (Temurin) — Kotlin 컴파일러가 JDK 25 버전 문자열 파싱 못 함
+brew install --cask temurin@21
+# 설치 경로 예시:
+#   ~/Library/Java/JavaVirtualMachines/jdk-21.x.x+xx
+
+# 3) gradle.properties의 JDK 경로를 본인 환경에 맞게 조정
+#    파일: gradle.properties
+#    예:   org.gradle.java.home=/Users/<you>/Library/Java/JavaVirtualMachines/jdk-21.0.5+11
+
+# 4) GitHub CLI 설치 + 인증 (PR/머지 자동화 스크립트 사용에 필요)
+brew install gh
+gh auth login --git-protocol https --web
+# → GitHub.com 선택 → "Yes" → 8자리 코드 → 브라우저에서 Authorize
+
+# 5) (선택) 사전 검증
+./gradlew compileKotlin
+./gradlew runIde            # 샌드박스 IDE 띄워서 동작 확인
+```
+
+> **macOS 외 OS**: 본 프로젝트는 macOS 기준으로 검증되어 있습니다. Linux/Windows에서도 JDK 21 + Gradle 8.10 wrapper로 빌드는 가능하지만, `gradle.properties`의 JDK 경로와 일부 IntelliJ 동작 (`runIde`의 IDE bundle 다운로드)이 OS별로 다를 수 있습니다.
+
+---
+
 ## 빌드 & 실행
 
 ```bash
@@ -112,6 +155,24 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 
 빌드된 ZIP은 DataGrip / IntelliJ IDEA Ultimate의
 **Settings → Plugins → ⚙️ → Install Plugin from Disk…** 로 설치할 수 있습니다.
+
+### Push → PR → 머지 자동화
+
+`scripts/ship.sh`로 현재 feature 브랜치를 한 번에 `main`까지 보낼 수 있습니다.
+
+```bash
+# 사전 1회: GitHub CLI 설치 + 인증
+brew install gh
+gh auth login
+
+# 작업 후: 한 번에 push + PR 생성 + squash 머지 + 원격 브랜치 삭제
+./scripts/ship.sh                 # PR base = main
+./scripts/ship.sh develop         # 다른 base 지정도 가능
+```
+
+스크립트는 인증·미커밋 변경·`origin/main`과의 ahead 여부를 미리 검사한 뒤
+`git push -u` → `gh pr create --fill` → `gh pr merge --squash --delete-branch`
+순서로 실행합니다. 머지 후 메인 워크트리에서는 `git pull --ff-only`로 동기화하세요.
 
 ---
 
@@ -154,8 +215,11 @@ src/main/
 - [x] Data 탭 (500행 페이징 + WHERE/ORDER BY 필터)
 - [x] Source 에디터 (라인 번호 + 신택스 + 에러 라인 강조)
 - [x] Describe 액션 확장 (VIEW/PACKAGE/SEQUENCE/SYNONYM + OWNER 우선)
+- [x] VIEW DDL 실제 본문 조회 (`ALL_VIEWS.TEXT`)
+- [x] PACKAGE 전용 다이얼로그 (Spec/Body/Routines/Errors)
+- [x] 다국어 (영문 기본 + 한국어, IDE locale 자동)
 - [ ] Triggers 탭 실제 데이터 조회
-- [ ] PACKAGE / SEQUENCE / SYNONYM 전용 다이얼로그
+- [ ] SEQUENCE / SYNONYM 전용 다이얼로그
 - [ ] 인라인 검색 (Ctrl+F) — 모든 테이블/Source에서
 - [ ] 컬럼 너비 사용자 조정값 저장
 - [ ] JetBrains 플러그인 마켓플레이스 배포

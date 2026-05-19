@@ -1,6 +1,7 @@
 package com.github.wooju.oracleinspector.actions
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
+import com.github.wooju.oracleinspector.ui.OraclePackageInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleRoutineInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleTableInfoDialog
 import com.intellij.database.Dbms
@@ -49,7 +50,10 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
             Candidate(schema, name, kind)
         class Rtn(val routine: DbRoutine, schema: String, name: String, kind: String) :
             Candidate(schema, name, kind)
-        /** 전용 다이얼로그가 없는 객체는 가벼운 팝업만. */
+        /** PACKAGE — 전용 다이얼로그 있음 (Spec/Body/Routines/Errors). */
+        class Pkg(val ds: DbDataSource, schema: String, name: String) :
+            Candidate(schema, name, "PACKAGE")
+        /** 전용 다이얼로그가 없는 객체(SEQUENCE/SYNONYM 등)는 가벼운 팝업만. */
         class Meta(schema: String, name: String, kind: String) : Candidate(schema, name, kind)
 
         fun display(): String = "$schema.$name  ($kind)"
@@ -189,8 +193,15 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
                             out += Candidate.Rtn(psi, schema.name, das.name, kind)
                         }
                     }
-                // PACKAGE / SEQUENCE / SYNONYM — 전용 다이얼로그 없음 → 메타 팝업
-                addMetaCandidates(schema, ObjectKind.PACKAGE, "PACKAGE", selected, out)
+                // PACKAGE — 전용 다이얼로그
+                try {
+                    schema.getDasChildren(ObjectKind.PACKAGE)
+                        .filter { it.name.equals(selected, ignoreCase = true) }
+                        .forEach { das -> out += Candidate.Pkg(ds, schema.name, das.name) }
+                } catch (t: Throwable) {
+                    LOG.debug("PACKAGE 수집 실패 — 무시: ${t.message}")
+                }
+                // SEQUENCE / SYNONYM — 전용 다이얼로그 없음 → 메타 팝업
                 addMetaCandidates(schema, ObjectKind.SEQUENCE, "SEQUENCE", selected, out)
                 addMetaCandidates(schema, ObjectKind.SYNONYM, "SYNONYM", selected, out)
             }
@@ -219,6 +230,7 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         when (c) {
             is Candidate.Tab -> OracleTableInfoDialog(project, c.table, c.schema, c.name).show()
             is Candidate.Rtn -> OracleRoutineInfoDialog(project, c.routine, c.schema, c.name).show()
+            is Candidate.Pkg -> OraclePackageInfoDialog(project, c.ds, c.schema, c.name).show()
             is Candidate.Meta -> showMetaPopup(editor, c)
         }
     }
