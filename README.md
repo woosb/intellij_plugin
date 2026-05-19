@@ -1,7 +1,13 @@
 # Oracle Dictionary Inspector
 
-DataGrip / IntelliJ IDEA Ultimate에서 Oracle **테이블·뷰·프로시저·펑션**의 딕셔너리 정보를 탭 형태로 빠르게 조회하는 플러그인입니다.
-Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 합니다.
+DataGrip / IntelliJ IDEA Ultimate에서 Oracle **테이블·뷰·프로시저·펑션·패키지·시퀀스·시노님·세션·락**의 딕셔너리·상태 정보를 탭 다이얼로그와 전용 Tool Window로 빠르게 조회하는 플러그인입니다.
+Toad for Oracle의 "Describe / Alter Table / Session Browser" 화면을 합쳐 둔 형태의 UX를 목표로 합니다.
+
+## 관련 문서
+
+- 📘 **[사용자 매뉴얼 (USER_GUIDE.md)](USER_GUIDE.md)** — 설치, 모든 기능 사용법, 단축키, 트러블슈팅
+- 🧪 **[테스트 시나리오 (TEST_SCENARIOS.md)](TEST_SCENARIOS.md)** — 전체 기능 회귀 테스트 절차 (P0/P1/P2 + 출시)
+- 🤖 **[CLAUDE.md](CLAUDE.md)** — Claude Code 세션 컨텍스트 (정책, 빌드, 코드 구조)
 
 ---
 
