@@ -231,6 +231,7 @@ class OracleTableInfoDialog(
         }
         autoFitColumns(jbTable, model)
         ColumnWidthMemo.apply(jbTable, tabIdFor(model))
+        TableSearchSupport.install(jbTable)
         return JBScrollPane(jbTable)
     }
 
@@ -302,6 +303,7 @@ class OracleTableInfoDialog(
             tableHeader.defaultRenderer = centerHeaderRenderer(tableHeader.defaultRenderer)
             setDefaultRenderer(Any::class.java, StripedCellRenderer(SwingConstants.LEFT))
         }
+        TableSearchSupport.install(dataTable)
         val scroll = JBScrollPane(dataTable)
 
         val pageLabel = JBLabel(OracleInspectorBundle.message("data.label.page.none")).apply {

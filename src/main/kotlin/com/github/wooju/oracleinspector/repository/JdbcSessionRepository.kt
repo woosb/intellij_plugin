@@ -3,7 +3,9 @@ package com.github.wooju.oracleinspector.repository
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.LockInfo
 import com.github.wooju.oracleinspector.model.LongOpInfo
+import com.github.wooju.oracleinspector.model.PlanRow
 import com.github.wooju.oracleinspector.model.SessionInfo
+import com.github.wooju.oracleinspector.model.SessionStat
 import com.github.wooju.oracleinspector.model.WaitEvent
 import com.intellij.database.dataSource.DatabaseConnectionManager
 import com.intellij.database.dataSource.LocalDataSource
@@ -148,6 +150,45 @@ class JdbcSessionRepository(
     }
 
     /**
+     * V$SQL_PLAN 기반 실행 계획. SQL_ID로 조회 (CHILD_NUMBER=0).
+     * 결과는 ID 순서대로 — UI에서 DEPTH로 들여쓰기 표현.
+     */
+    fun loadExplainPlan(sqlId: String): List<PlanRow> {
+        if (sqlId.isBlank()) return emptyList()
+        return withConnection { conn ->
+            val sql = """
+                SELECT ID, PARENT_ID, DEPTH,
+                       OPERATION, OPTIONS,
+                       OBJECT_OWNER, OBJECT_NAME,
+                       CARDINALITY, BYTES, COST, CPU_COST, TIME
+                FROM V${'$'}SQL_PLAN
+                WHERE SQL_ID = ? AND CHILD_NUMBER = 0
+                ORDER BY ID
+            """.trimIndent()
+            executePrepared(conn, sql, listOf(sqlId)) { rs ->
+                val out = ArrayList<PlanRow>()
+                while (rs.next()) {
+                    out += PlanRow(
+                        id = rs.getInt(1),
+                        parentId = nullableInt(rs, 2),
+                        depth = rs.getInt(3),
+                        operation = rs.getString(4),
+                        options = rs.getString(5),
+                        objectOwner = rs.getString(6),
+                        objectName = rs.getString(7),
+                        cardinality = nullableLong(rs, 8),
+                        bytes = nullableLong(rs, 9),
+                        cost = nullableLong(rs, 10),
+                        cpuCost = nullableLong(rs, 11),
+                        timeSec = nullableLong(rs, 12),
+                    )
+                }
+                out
+            }
+        }
+    }
+
+    /**
      * V$SESSION_LONGOPS 기반 장시간 작업 목록.
      * 기본은 "아직 진행 중인 것"만 (SOFAR < TOTALWORK).
      */
@@ -183,6 +224,42 @@ class JdbcSessionRepository(
                         elapsedSec = nullableLong(rs, 9),
                         timeRemainingSec = nullableLong(rs, 10),
                         message = rs.getString(11),
+                    )
+                }
+                out
+            }
+        }
+    }
+
+    /**
+     * 선택 세션의 자주 보는 통계 (V$SESSTAT + V$STATNAME).
+     * 800+ 통계 중 튜닝 시 가장 유용한 것들만 화이트리스트로 조회.
+     */
+    fun loadSessionStats(sid: Int): List<SessionStat> {
+        return withConnection { conn ->
+            val sql = """
+                SELECT n.NAME, s.VALUE
+                FROM V${'$'}SESSTAT s
+                JOIN V${'$'}STATNAME n ON s.STATISTIC# = n.STATISTIC#
+                WHERE s.SID = ?
+                  AND n.NAME IN (
+                    'session logical reads', 'physical reads', 'physical writes',
+                    'parse count (total)', 'parse count (hard)', 'execute count',
+                    'redo size', 'CPU used by this session',
+                    'sorts (memory)', 'sorts (disk)',
+                    'user commits', 'user rollbacks',
+                    'session pga memory', 'session uga memory',
+                    'bytes received via SQL*Net from client',
+                    'bytes sent via SQL*Net to client'
+                  )
+                ORDER BY n.NAME
+            """.trimIndent()
+            executePrepared(conn, sql, listOf(sid.toString())) { rs ->
+                val out = ArrayList<SessionStat>()
+                while (rs.next()) {
+                    out += SessionStat(
+                        name = rs.getString(1) ?: "",
+                        value = rs.getLong(2),
                     )
                 }
                 out

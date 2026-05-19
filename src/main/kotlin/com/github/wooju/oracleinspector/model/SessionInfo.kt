@@ -30,6 +30,28 @@ data class WaitEvent(
     val p3: String?,
 )
 
+/** V$SESSTAT 한 행 — 통계 이름 + 누적 값. */
+data class SessionStat(
+    val name: String,
+    val value: Long,
+)
+
+/** V$SQL_PLAN 한 행 — 실행 계획 트리의 한 노드. */
+data class PlanRow(
+    val id: Int,
+    val parentId: Int?,
+    val depth: Int,
+    val operation: String?,
+    val options: String?,
+    val objectOwner: String?,
+    val objectName: String?,
+    val cardinality: Long?,
+    val bytes: Long?,
+    val cost: Long?,
+    val cpuCost: Long?,
+    val timeSec: Long?,
+)
+
 /**
  * Oracle V$SESSION 한 행을 표시용으로 추린 DTO.
  * SQL 텍스트는 별도 V$SQLAREA 조인이 비싸므로 SQL_ID만 가지고 있다가

@@ -233,6 +233,7 @@ class OracleRoutineInfoDialog(
             setDefaultRenderer(Any::class.java, StripedCellRenderer())
         }
         autoFitColumns(jbTable, model)
+        TableSearchSupport.install(jbTable)
         return JBScrollPane(jbTable)
     }
 
@@ -358,6 +359,7 @@ class OracleRoutineInfoDialog(
             setDefaultRenderer(Any::class.java, StripedCellRenderer())
         }
         autoFitColumns(jbTable, model)
+        TableSearchSupport.install(jbTable)
 
         jbTable.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {

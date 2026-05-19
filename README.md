@@ -223,6 +223,9 @@ src/main/
 - [x] SEQUENCE / SYNONYM 전용 다이얼로그
 - [x] Sessions Tool Window — Long Ops 탭 (`V$SESSION_LONGOPS`) + Wait History sub-tab (`V$SESSION_WAIT_HISTORY`)
 - [x] 컬럼 너비 사용자 조정값 저장 (`PropertiesComponent`)
+- [x] Session Stats sub-tab (`V$SESSTAT + V$STATNAME`)
+- [x] Explain Plan sub-tab (`V$SQL_PLAN`) — 비싼 OPERATION 빨강 강조
+- [x] 모든 테이블에 인라인 검색 (`TableSpeedSearch`)
 - [ ] 인라인 검색 (Ctrl+F) — 모든 테이블/Source에서
 - [ ] 컬럼 너비 사용자 조정값 저장
 - [ ] JetBrains 플러그인 마켓플레이스 배포
