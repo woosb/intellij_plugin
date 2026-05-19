@@ -3,11 +3,14 @@ package com.github.wooju.oracleinspector.ui.sessions
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.LockInfo
 import com.github.wooju.oracleinspector.model.LongOpInfo
+import com.github.wooju.oracleinspector.model.PlanRow
 import com.github.wooju.oracleinspector.model.SessionInfo
+import com.github.wooju.oracleinspector.model.SessionStat
 import com.github.wooju.oracleinspector.model.WaitEvent
 import com.github.wooju.oracleinspector.repository.JdbcSessionRepository
 import com.github.wooju.oracleinspector.ui.ColumnWidthMemo
 import com.github.wooju.oracleinspector.ui.DictionaryTableModel
+import com.github.wooju.oracleinspector.ui.TableSearchSupport
 import com.intellij.database.Dbms
 import com.intellij.database.psi.DbDataSource
 import com.intellij.database.psi.DbPsiFacade
@@ -120,6 +123,16 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     private var waits: List<WaitEvent> = emptyList()
     private val waitsTable = JBTable(DictionaryTableModel.empty(waitColumns))
 
+    // ── Session Stats (Sessions 탭 하단 sub-tab) ──────────────────────────────
+    private val statColumns = listOf("Statistic", "Value")
+    private var stats: List<SessionStat> = emptyList()
+    private val statsTable = JBTable(DictionaryTableModel.empty(statColumns))
+
+    // ── Explain Plan (Sessions 탭 하단 sub-tab) ──────────────────────────────
+    private val planColumns = listOf("ID", "Operation", "Object", "Rows", "Bytes", "Cost", "CPU", "Time")
+    private var plan: List<PlanRow> = emptyList()
+    private val planTable = JBTable(DictionaryTableModel.empty(planColumns))
+
     init {
         sessionsTable.commonInit(SessionsCellRenderer())
         locksTable.commonInit(LocksCellRenderer())
@@ -129,12 +142,21 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                 if (!isSelected) background = if (row % 2 == 0) evenBg else oddBg
             }
         })
+        statsTable.commonInit(object : StripedRenderer() {
+            override fun decorate(tbl: JTable, row: Int, modelRow: Int, value: Any?, isSelected: Boolean) {
+                if (!isSelected) background = if (row % 2 == 0) evenBg else oddBg
+                horizontalAlignment = if (value is Number || (value is String && value.all { it.isDigit() || it == ',' })) SwingConstants.RIGHT else SwingConstants.LEFT
+            }
+        })
+        planTable.commonInit(PlanCellRenderer())
 
-        // Sessions: 행 선택 → Current SQL + Wait History 동시 갱신
+        // Sessions: 행 선택 → Current SQL + Wait History + Stats + Plan 동시 갱신
         sessionsTable.selectionModel.addListSelectionListener {
             if (!it.valueIsAdjusting) {
                 loadCurrentSqlForSelected()
                 loadWaitHistoryForSelected()
+                loadSessionStatsForSelected()
+                loadExplainPlanForSelected()
             }
         }
 
@@ -230,10 +252,12 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
             add(right, BorderLayout.EAST)
         }
 
-        // ── Sessions 탭 빌드 (하단은 Current SQL / Wait History sub-tab) ─────
+        // ── Sessions 탭 빌드 (하단은 Current SQL / Wait History / Stats sub-tab) ─────
         val detailTabs = JBTabbedPane().apply {
             addTab(OracleInspectorBundle.message("sessions.label.current.sql"), sqlEditor.component)
             addTab(OracleInspectorBundle.message("sessions.label.wait.history"), JBScrollPane(waitsTable))
+            addTab(OracleInspectorBundle.message("sessions.label.stats"), JBScrollPane(statsTable))
+            addTab(OracleInspectorBundle.message("sessions.label.plan"), JBScrollPane(planTable))
         }
         val sessionsTab = JPanel(BorderLayout()).apply {
             add(buildSessionFilterRow(), BorderLayout.NORTH)
@@ -307,6 +331,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         tableHeader.reorderingAllowed = true
         setDefaultRenderer(Any::class.java, renderer)
         rowSorter = TableRowSorter(model as DictionaryTableModel)
+        TableSearchSupport.install(this)
     }
 
     private fun rightClickHandler(action: (MouseEvent) -> Unit) = object : MouseAdapter() {
@@ -597,6 +622,96 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         )
     }
 
+    // ── Explain Plan 로딩 (선택 세션의 SQL_ID 기준) ─────────────────────────
+    private fun loadExplainPlanForSelected() {
+        val s = selectedSession()
+        val sqlId = s?.sqlId
+        if (s == null || sqlId.isNullOrBlank()) {
+            plan = emptyList()
+            planTable.model = DictionaryTableModel.empty(planColumns)
+            return
+        }
+        val ds = selectedDs() ?: return
+        object : Task.Backgroundable(
+            project,
+            OracleInspectorBundle.message("sessions.plan.task.title", sqlId),
+            true,
+        ) {
+            private var fetched: List<PlanRow>? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                try { fetched = JdbcSessionRepository(project, ds).loadExplainPlan(sqlId) }
+                catch (t: Throwable) { LOG.warn("Explain plan 조회 실패", t) }
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    val list = fetched ?: emptyList()
+                    plan = list
+                    val rows = list.map { p ->
+                        val opLabel = buildString {
+                            repeat(p.depth) { append("  ") }
+                            append(p.operation ?: "")
+                            if (!p.options.isNullOrBlank()) append(" ").append(p.options)
+                        }
+                        val obj = listOfNotNull(p.objectOwner, p.objectName)
+                            .joinToString(".").ifEmpty { "" }
+                        listOf(
+                            p.id, opLabel, obj,
+                            p.cardinality ?: 0L,
+                            p.bytes ?: 0L,
+                            p.cost ?: 0L,
+                            p.cpuCost ?: 0L,
+                            p.timeSec ?: 0L,
+                        )
+                    }
+                    val newModel = DictionaryTableModel(planColumns, rows)
+                    planTable.model = newModel
+                    planTable.rowSorter = TableRowSorter(newModel)
+                    autoFitColumns(planTable, newModel)
+                }
+            }
+        }.queue()
+    }
+
+    // ── Session Stats 로딩 (선택 세션 기준) ─────────────────────────────────
+    private fun loadSessionStatsForSelected() {
+        val s = selectedSession()
+        if (s == null) {
+            stats = emptyList()
+            statsTable.model = DictionaryTableModel.empty(statColumns)
+            return
+        }
+        val ds = selectedDs() ?: return
+        object : Task.Backgroundable(
+            project,
+            OracleInspectorBundle.message("sessions.stats.task.title", s.sid),
+            true,
+        ) {
+            private var fetched: List<SessionStat>? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                try { fetched = JdbcSessionRepository(project, ds).loadSessionStats(s.sid) }
+                catch (t: Throwable) { LOG.warn("Session stats 조회 실패", t) }
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    val list = fetched ?: emptyList()
+                    stats = list
+                    val rows = list.map { st ->
+                        listOf(st.name, formatNumber(st.value))
+                    }
+                    val newModel = DictionaryTableModel(statColumns, rows)
+                    statsTable.model = newModel
+                    statsTable.rowSorter = TableRowSorter(newModel)
+                    autoFitColumns(statsTable, newModel)
+                }
+            }
+        }.queue()
+    }
+
+    private fun formatNumber(v: Long): String =
+        if (v >= 1000) String.format("%,d", v) else v.toString()
+
     // ── Wait History 로딩 (선택 세션 기준) ──────────────────────────────────
     private fun loadWaitHistoryForSelected() {
         val s = selectedSession()
@@ -758,6 +873,30 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                     else -> oddBg
                 }
             }
+        }
+    }
+
+    // ── 셀 렌더러: Explain Plan (비싼 OPERATION 빨강 강조) ──────────────────
+    private inner class PlanCellRenderer : StripedRenderer() {
+        private val expensiveBg = JBColor(Color(255, 220, 220), Color(90, 35, 35))
+        private val indexFg = JBColor(Color(0, 110, 0), Color(140, 220, 140))
+
+        override fun decorate(tbl: JTable, row: Int, modelRow: Int, value: Any?, isSelected: Boolean) {
+            val p = plan.getOrNull(modelRow)
+            val isExpensive = p != null && (
+                (p.operation == "TABLE ACCESS" && p.options == "FULL") ||
+                p.operation?.contains("CARTESIAN") == true
+            )
+            val isIndex = p != null && p.operation?.startsWith("INDEX") == true
+            if (!isSelected) {
+                background = when {
+                    isExpensive -> expensiveBg
+                    row % 2 == 0 -> evenBg
+                    else -> oddBg
+                }
+                foreground = if (isIndex) indexFg else UIManager.getColor("Table.foreground")
+            }
+            horizontalAlignment = if (value is Number) SwingConstants.RIGHT else SwingConstants.LEFT
         }
     }
 

@@ -64,6 +64,7 @@ abstract class SimpleObjectDialog(
             tableHeader.reorderingAllowed = false
             setDefaultRenderer(Any::class.java, PropertyCellRenderer())
         }
+        TableSearchSupport.install(tbl)
     }
 
     override fun createCenterPanel(): JComponent {
