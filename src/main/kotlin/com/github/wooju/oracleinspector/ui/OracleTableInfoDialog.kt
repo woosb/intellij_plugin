@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.ui
 
+import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
 import com.github.wooju.oracleinspector.model.TableInfo
 import com.github.wooju.oracleinspector.repository.DasTableRepository
 import com.github.wooju.oracleinspector.repository.JdbcTableDataRepository
@@ -9,6 +10,7 @@ import com.intellij.database.psi.DbTable
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.ide.CopyPasteManager
@@ -56,7 +58,13 @@ class OracleTableInfoDialog(
     }
 
     override fun createCenterPanel(): JComponent {
-        val root = JPanel(BorderLayout(0, 0))
+        val root = object : JPanel(BorderLayout(0, 0)), DataProvider {
+            override fun getData(dataId: String): Any? = when (dataId) {
+                OracleInspectorDataKeys.CURRENT_OWNER.name -> schemaName
+                OracleInspectorDataKeys.CURRENT_DATA_SOURCE.name -> table.dataSource
+                else -> null
+            }
+        }
         root.preferredSize = Dimension(1060, 600)
 
         root.add(buildTopBar(), BorderLayout.NORTH)
