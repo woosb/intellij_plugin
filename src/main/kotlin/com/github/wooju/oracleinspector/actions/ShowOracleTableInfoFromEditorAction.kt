@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.actions
 
+import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.ui.OracleRoutineInfoDialog
 import com.github.wooju.oracleinspector.ui.OracleTableInfoDialog
 import com.intellij.database.Dbms
@@ -83,8 +84,8 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         when {
             candidates.isEmpty() -> Messages.showInfoMessage(
                 project,
-                "'$raw' 객체를 Oracle 데이터소스에서 찾을 수 없습니다.",
-                "Oracle Dictionary Inspector",
+                OracleInspectorBundle.message("action.object.not.found", raw),
+                OracleInspectorBundle.message("notification.group"),
             )
             candidates.size == 1 -> openOrPopup(project, editor, candidates[0])
             else -> {
@@ -103,8 +104,8 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
                 val items = ordered.map { it.display() }.toTypedArray()
                 val choice = Messages.showChooseDialog(
                     project,
-                    "동일한 이름의 객체가 여러 곳에 있습니다.",
-                    "객체 선택",
+                    OracleInspectorBundle.message("action.dialog.message.multiple.matches"),
+                    OracleInspectorBundle.message("action.dialog.title.choose.object"),
                     null,
                     items,
                     items[0],
@@ -227,7 +228,7 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
             append("<html><div style='padding:6px 4px;'>")
             append("<div style='font-size:11pt;'><b>").append(c.schema).append('.').append(c.name).append("</b></div>")
             append("<div style='color:gray;margin-top:2px;'>").append(c.kind).append("</div>")
-            append("<div style='margin-top:8px;'>전용 다이얼로그가 없어 메타 정보만 표시합니다.</div>")
+            append("<div style='margin-top:8px;'>").append(OracleInspectorBundle.message("action.popup.meta.note")).append("</div>")
             append("</div></html>")
         }
         val label = JBLabel(html).apply {

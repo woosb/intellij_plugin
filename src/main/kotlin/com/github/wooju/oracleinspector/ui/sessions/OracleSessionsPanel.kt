@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.ui.sessions
 
+import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.LockInfo
 import com.github.wooju.oracleinspector.model.SessionInfo
 import com.github.wooju.oracleinspector.repository.JdbcSessionRepository
@@ -69,8 +70,8 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     // ── 공통 툴바 컴포넌트 ────────────────────────────────────────────────────
     private val dsCombo = ComboBox<DbDataSource>()
     private val refreshBtn = JButton(AllIcons.Actions.Refresh)
-    private val autoToggle = JBCheckBox("Auto 5s", false)
-    private val includeBg = JBCheckBox("Background", false)
+    private val autoToggle = JBCheckBox(OracleInspectorBundle.message("sessions.toggle.auto5s"), false)
+    private val includeBg = JBCheckBox(OracleInspectorBundle.message("sessions.toggle.background"), false)
     private val statusLabel = JBLabel("").apply {
         font = font.deriveFont(11f)
         foreground = UIManager.getColor("Label.disabledForeground")
@@ -115,7 +116,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         sessionsTable.addMouseListener(rightClickHandler { e ->
             val s = selectedSession() ?: return@rightClickHandler
             JPopupMenu().apply {
-                add(JMenuItem("Kill Session ${s.sid},${s.serial} (${s.username ?: "?"})").apply {
+                add(JMenuItem(OracleInspectorBundle.message("sessions.kill.menu.session", s.sid, s.serial, s.username ?: "?")).apply {
                     addActionListener { confirmAndKill(s.sid, s.serial, s.username, s.machine, s.program, s.status) }
                 })
             }.show(e.component, e.x, e.y)
@@ -125,7 +126,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         locksTable.addMouseListener(rightClickHandler { e ->
             val l = selectedLock() ?: return@rightClickHandler
             JPopupMenu().apply {
-                add(JMenuItem("Kill Holder Session ${l.sid},${l.serial} (${l.username ?: "?"})").apply {
+                add(JMenuItem(OracleInspectorBundle.message("sessions.kill.menu.holder", l.sid, l.serial, l.username ?: "?")).apply {
                     addActionListener { confirmAndKill(l.sid, l.serial, l.username, l.machine, l.program, l.status) }
                 })
             }.show(e.component, e.x, e.y)
@@ -159,7 +160,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                 list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean,
             ): Component {
                 val c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-                text = (value as? DbDataSource)?.name ?: "(데이터소스 없음)"
+                text = (value as? DbDataSource)?.name ?: OracleInspectorBundle.message("common.no.datasource")
                 return c
             }
         }
@@ -167,18 +168,18 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         dsCombo.addActionListener { if (dsCombo.selectedItem != null) reloadActiveTab() }
 
         refreshBtn.apply {
-            toolTipText = "지금 새로고침"
+            toolTipText = OracleInspectorBundle.message("sessions.tooltip.refresh.now")
             isBorderPainted = false
             isContentAreaFilled = false
             cursor = Cursor(Cursor.HAND_CURSOR)
             preferredSize = Dimension(28, 28)
             addActionListener { reloadActiveTab() }
         }
-        autoToggle.toolTipText = "5초마다 활성 탭 자동 새로고침"
+        autoToggle.toolTipText = OracleInspectorBundle.message("sessions.tooltip.auto.refresh")
         autoToggle.addActionListener {
             if (autoToggle.isSelected) scheduleAutoRefresh() else alarm.cancelAllRequests()
         }
-        includeBg.toolTipText = "Sessions 탭에서 TYPE='BACKGROUND' 세션도 포함"
+        includeBg.toolTipText = OracleInspectorBundle.message("sessions.tooltip.background")
         includeBg.addActionListener { if (currentTab() == TAB_SESSIONS) reloadActiveTab() }
 
         val toolbar = JPanel(BorderLayout()).apply {
@@ -189,7 +190,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
             )
             val left = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
                 isOpaque = false
-                add(JBLabel("DataSource").apply { font = font.deriveFont(Font.BOLD, 11f) })
+                add(JBLabel(OracleInspectorBundle.message("sessions.label.datasource")).apply { font = font.deriveFont(Font.BOLD, 11f) })
                 add(dsCombo)
                 add(refreshBtn)
                 add(autoToggle)
@@ -210,7 +211,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                 OnePixelSplitter(true, 0.6f).apply {
                     firstComponent = JBScrollPane(sessionsTable)
                     secondComponent = JPanel(BorderLayout()).apply {
-                        add(JBLabel("Current SQL").apply {
+                        add(JBLabel(OracleInspectorBundle.message("sessions.label.current.sql")).apply {
                             font = font.deriveFont(Font.BOLD, 11f)
                             border = BorderFactory.createEmptyBorder(2, 6, 2, 0)
                         }, BorderLayout.NORTH)
@@ -240,7 +241,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private fun buildSessionFilterRow(): JPanel {
-        val clearBtn = JButton("Clear").apply {
+        val clearBtn = JButton(OracleInspectorBundle.message("sessions.filter.clear")).apply {
             isFocusable = false
             margin = java.awt.Insets(2, 8, 2, 8)
             addActionListener {
@@ -256,10 +257,10 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                 BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
                 BorderFactory.createEmptyBorder(2, 4, 2, 4),
             )
-            add(filterLabel("USER")); add(filterUser)
-            add(filterLabel("STATUS")); add(filterStatus)
-            add(filterLabel("PROGRAM")); add(filterProgram)
-            add(filterLabel("MODULE")); add(filterModule)
+            add(filterLabel(OracleInspectorBundle.message("sessions.filter.user"))); add(filterUser)
+            add(filterLabel(OracleInspectorBundle.message("sessions.filter.status"))); add(filterStatus)
+            add(filterLabel(OracleInspectorBundle.message("sessions.filter.program"))); add(filterProgram)
+            add(filterLabel(OracleInspectorBundle.message("sessions.filter.module"))); add(filterModule)
             add(clearBtn)
         }
     }
@@ -306,7 +307,7 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         if (all.isNotEmpty()) {
             dsCombo.selectedIndex = 0  // 액션 리스너가 자동 로드 트리거
         } else {
-            statusLabel.text = "Oracle 데이터소스가 없습니다"
+            statusLabel.text = OracleInspectorBundle.message("sessions.no.oracle.datasource")
         }
     }
 
@@ -330,9 +331,9 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         val ds = selectedDs() ?: return
         if (loading) return
         loading = true
-        setBusy(true, "조회 중…")
+        setBusy(true, OracleInspectorBundle.message("sessions.status.loading"))
 
-        object : Task.Backgroundable(project, "Oracle 세션 조회", true) {
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("sessions.task.title"), true) {
             private var fetched: List<SessionInfo>? = null
             private var failure: Throwable? = null
 
@@ -378,7 +379,9 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         sorter.rowFilter = makeSessionRowFilter()
         sessionsTable.rowSorter = sorter
         autoFitColumns(sessionsTable, newModel)
-        statusLabel.text = "세션 ${list.size}건 · ${java.time.LocalTime.now().withNano(0)}"
+        statusLabel.text = OracleInspectorBundle.message(
+            "sessions.status.count.with.time", list.size, java.time.LocalTime.now().withNano(0),
+        )
         ApplicationManager.getApplication().runWriteAction { sqlDocument.setText("") }
     }
 
@@ -416,12 +419,12 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         val sqlId = s.sqlId
         if (sqlId.isNullOrBlank()) {
             ApplicationManager.getApplication().runWriteAction {
-                sqlDocument.setText("-- (이 세션의 현재 SQL_ID 없음) --")
+                sqlDocument.setText(OracleInspectorBundle.message("sessions.current.sql.empty"))
             }
             return
         }
         val ds = selectedDs() ?: return
-        object : Task.Backgroundable(project, "Current SQL 조회 (SQL_ID=$sqlId)", true) {
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("sessions.current.sql.task.title", sqlId), true) {
             private var fetched: String? = null
             private var failure: Throwable? = null
             override fun run(indicator: ProgressIndicator) {
@@ -432,8 +435,13 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
             override fun onFinished() {
                 ApplicationManager.getApplication().invokeLater {
                     val text = fetched
-                        ?: failure?.let { "-- SQL 조회 실패: ${it.message ?: it::class.simpleName} --" }
-                        ?: "-- V\$SQLAREA에서 SQL을 찾을 수 없습니다 (캐시에서 제거되었을 수 있음) --"
+                        ?: failure?.let {
+                            OracleInspectorBundle.message(
+                                "sessions.current.sql.fetch.failed",
+                                it.message ?: it::class.simpleName.orEmpty(),
+                            )
+                        }
+                        ?: OracleInspectorBundle.message("sessions.current.sql.not.found")
                     ApplicationManager.getApplication().runWriteAction {
                         sqlDocument.setText(text)
                     }
@@ -447,9 +455,9 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         val ds = selectedDs() ?: return
         if (loading) return
         loading = true
-        setBusy(true, "락 조회 중…")
+        setBusy(true, OracleInspectorBundle.message("sessions.locks.status.loading"))
 
-        object : Task.Backgroundable(project, "Oracle Lock 조회", true) {
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("sessions.locks.task.title"), true) {
             private var fetched: List<LockInfo>? = null
             private var failure: Throwable? = null
 
@@ -494,7 +502,9 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         locksTable.model = newModel
         locksTable.rowSorter = TableRowSorter(newModel)
         autoFitColumns(locksTable, newModel)
-        statusLabel.text = "락 ${list.size}건 · ${java.time.LocalTime.now().withNano(0)}"
+        statusLabel.text = OracleInspectorBundle.message(
+            "sessions.locks.status.count.with.time", list.size, java.time.LocalTime.now().withNano(0),
+        )
     }
 
     private fun selectedLock(): LockInfo? {
@@ -521,26 +531,22 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     private fun confirmAndKill(
         sid: Int, serial: Long, user: String?, machine: String?, program: String?, status: String?,
     ) {
-        val msg = """
-            정말 다음 세션을 KILL 하시겠습니까?
-
-              SID      : $sid
-              SERIAL#  : $serial
-              USER     : ${user ?: "?"}
-              MACHINE  : ${machine ?: "?"}
-              PROGRAM  : ${program ?: "?"}
-              STATUS   : ${status ?: "?"}
-
-            실행 SQL:
-              ALTER SYSTEM KILL SESSION '$sid,$serial' IMMEDIATE
-        """.trimIndent()
+        val msg = OracleInspectorBundle.message(
+            "sessions.kill.confirm.message",
+            sid, serial,
+            user ?: "?", machine ?: "?", program ?: "?", status ?: "?",
+        )
         val ok = Messages.showOkCancelDialog(
-            project, msg, "Kill Session", "KILL", "취소", AllIcons.General.WarningDialog,
+            project, msg,
+            OracleInspectorBundle.message("sessions.kill.confirm.title"),
+            OracleInspectorBundle.message("sessions.kill.confirm.button"),
+            OracleInspectorBundle.message("sessions.kill.confirm.cancel"),
+            AllIcons.General.WarningDialog,
         )
         if (ok != Messages.OK) return
 
         val ds = selectedDs() ?: return
-        object : Task.Backgroundable(project, "KILL SESSION $sid,$serial", true) {
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("sessions.kill.task.title", sid, serial), true) {
             private var failure: Throwable? = null
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
@@ -551,10 +557,10 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
                 ApplicationManager.getApplication().invokeLater {
                     val err = failure
                     if (err == null) {
-                        notifyInfo("세션 $sid,$serial KILL 명령을 보냈습니다.")
+                        notifyInfo(OracleInspectorBundle.message("sessions.kill.notify.sent", sid, serial))
                         reloadActiveTab()
                     } else {
-                        notifyError("KILL 실패: ${err.message ?: err::class.simpleName}")
+                        notifyError(OracleInspectorBundle.message("sessions.kill.failed", err.message ?: err::class.simpleName.orEmpty()))
                     }
                 }
             }
@@ -571,13 +577,12 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         val msg = t.message.orEmpty()
         return when {
             "ORA-00942" in msg || "table or view does not exist" in msg ->
-                "V\$SESSION / V\$LOCKED_OBJECT 권한이 없습니다. DBA에게 다음 권한을 요청하세요:\n" +
-                    "  GRANT SELECT ON V_\$SESSION TO <사용자>;\n" +
-                    "  GRANT SELECT ON V_\$SQLAREA TO <사용자>;\n" +
-                    "  GRANT SELECT ON V_\$LOCKED_OBJECT TO <사용자>;"
+                OracleInspectorBundle.message("sessions.error.ora00942")
             "ORA-01031" in msg || "insufficient privileges" in msg ->
-                "권한 부족 (ORA-01031). KILL SESSION은 ALTER SYSTEM 권한이 필요합니다."
-            else -> "오류: ${msg.ifBlank { t::class.simpleName.orEmpty() }}"
+                OracleInspectorBundle.message("sessions.error.ora01031")
+            else -> OracleInspectorBundle.message(
+                "sessions.error.generic", msg.ifBlank { t::class.simpleName.orEmpty() },
+            )
         }
     }
 

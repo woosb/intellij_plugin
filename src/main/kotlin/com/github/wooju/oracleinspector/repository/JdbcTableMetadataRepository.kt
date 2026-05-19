@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.repository
 
+import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.model.CheckInfo
 import com.github.wooju.oracleinspector.model.ColumnInfo
 import com.github.wooju.oracleinspector.model.ForeignKeyInfo
@@ -27,12 +28,12 @@ class JdbcTableMetadataRepository(
 
     override fun loadTable(): TableInfo {
         val local = dataSource.delegate as? LocalDataSource
-            ?: throw IllegalStateException("LocalDataSource가 아니어서 JDBC 조회 불가")
+            ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.no.local.datasource"))
 
         val ref = DatabaseConnectionManager.getInstance()
             .build(project, local)
             .createBlocking()
-            ?: throw IllegalStateException("DB 연결을 만들 수 없습니다.")
+            ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.cannot.create.connection"))
         ref.use { r ->
             val conn = r.get().remoteConnection
             return queryAll(conn)
