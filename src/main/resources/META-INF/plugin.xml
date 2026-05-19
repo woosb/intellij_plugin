@@ -14,6 +14,12 @@
         <notificationGroup id="Oracle Dictionary Inspector"
                            displayType="BALLOON"
                            bundle=""/>
+
+        <!-- 하단 Tool Window: Oracle 세션 브라우저 (V$SESSION) -->
+        <toolWindow id="Oracle Sessions"
+                    anchor="bottom"
+                    icon="AllIcons.Toolwindows.ToolWindowProfiler"
+                    factoryClass="com.github.wooju.oracleinspector.ui.sessions.OracleSessionsToolWindowFactory"/>
     </extensions>
 
     <actions>
