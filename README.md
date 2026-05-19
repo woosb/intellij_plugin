@@ -124,6 +124,24 @@ Toad for Oracle의 "Describe / Alter Table" 화면과 유사한 UX를 목표로 
 빌드된 ZIP은 DataGrip / IntelliJ IDEA Ultimate의
 **Settings → Plugins → ⚙️ → Install Plugin from Disk…** 로 설치할 수 있습니다.
 
+### Push → PR → 머지 자동화
+
+`scripts/ship.sh`로 현재 feature 브랜치를 한 번에 `main`까지 보낼 수 있습니다.
+
+```bash
+# 사전 1회: GitHub CLI 설치 + 인증
+brew install gh
+gh auth login
+
+# 작업 후: 한 번에 push + PR 생성 + squash 머지 + 원격 브랜치 삭제
+./scripts/ship.sh                 # PR base = main
+./scripts/ship.sh develop         # 다른 base 지정도 가능
+```
+
+스크립트는 인증·미커밋 변경·`origin/main`과의 ahead 여부를 미리 검사한 뒤
+`git push -u` → `gh pr create --fill` → `gh pr merge --squash --delete-branch`
+순서로 실행합니다. 머지 후 메인 워크트리에서는 `git pull --ff-only`로 동기화하세요.
+
 ---
 
 ## 프로젝트 구조
