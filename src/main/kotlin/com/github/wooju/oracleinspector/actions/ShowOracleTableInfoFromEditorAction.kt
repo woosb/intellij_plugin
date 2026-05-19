@@ -19,50 +19,88 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.ui.components.JBLabel
+import java.awt.BorderLayout
+import java.awt.Font
+import javax.swing.BorderFactory
+import javax.swing.JPanel
+import javax.swing.UIManager
 
 private val LOG = logger<ShowOracleTableInfoFromEditorAction>()
 
 /**
- * 에디터에서 선택한 텍스트를 이름으로 보고 Oracle 데이터소스의 테이블 / 표준 루틴을 찾아 다이얼로그를 연다.
- * 패키지 내부 루틴은 검색 대상에서 제외한다.
+ * 에디터에서 선택한 텍스트(또는 캐럿 위치 식별자)를 Oracle 객체로 보고 적절한 뷰를 연다.
+ *  - TABLE / VIEW            → OracleTableInfoDialog
+ *  - PROCEDURE / FUNCTION    → OracleRoutineInfoDialog
+ *  - PACKAGE / SEQUENCE /
+ *    SYNONYM / 그 외 종류    → 가벼운 JBPopup (전용 다이얼로그 없음)
+ *
+ * 검색 우선순위:
+ *  1) "SCHEMA.NAME"처럼 스키마가 명시되면 그 OWNER 만 사용
+ *  2) 다이얼로그 안에서 호출되어 currentOwner 컨텍스트가 있으면 그 OWNER 우선
+ *  3) 그래도 못 찾으면 모든 스키마를 후보로 두고 동명일 경우 선택 다이얼로그
  */
 class ShowOracleTableInfoFromEditorAction : AnAction() {
 
-    private sealed class Candidate(val schema: String, val name: String) {
-        class Tab(val table: DbTable, schema: String, name: String) : Candidate(schema, name)
-        class Rtn(val routine: DbRoutine, schema: String, name: String, val kind: String) : Candidate(schema, name)
-        fun display(): String = "$schema.$name${typeSuffix()}"
-        private fun typeSuffix(): String = when (this) {
-            is Tab -> "  (TABLE)"
-            is Rtn -> "  ($kind)"
-        }
+    private sealed class Candidate(val schema: String, val name: String, val kind: String) {
+        class Tab(val table: DbTable, schema: String, name: String, kind: String) :
+            Candidate(schema, name, kind)
+        class Rtn(val routine: DbRoutine, schema: String, name: String, kind: String) :
+            Candidate(schema, name, kind)
+        /** 전용 다이얼로그가 없는 객체는 가벼운 팝업만. */
+        class Meta(schema: String, name: String, kind: String) : Candidate(schema, name, kind)
+
+        fun display(): String = "$schema.$name  ($kind)"
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
-        val selected = resolveTargetWord(editor) ?: return
+        val raw = resolveTargetWord(editor) ?: return
+
+        val (explicitOwner, baseName) = parseQualified(raw)
+        val currentOwner = e.getData(OracleInspectorDataKeys.CURRENT_OWNER)?.uppercase()
+        val currentDs = e.getData(OracleInspectorDataKeys.CURRENT_DATA_SOURCE)
 
         val facade = DbPsiFacade.getInstance(project)
         val dsNode = e.getData(DatabaseView.DATABASE_RELATED_SINGLE_DATA_SOURCE)
-        val dataSources: List<DbDataSource> = if (dsNode != null) {
-            facade.dataSources.filter { it.delegate == dsNode.localDataSource }
-        } else {
-            facade.dataSources.filter { it.getDatabaseDialect()?.getDbms() == Dbms.ORACLE }
+        val dataSources: List<DbDataSource> = when {
+            currentDs != null -> listOf(currentDs)
+            dsNode != null -> facade.dataSources.filter { it.delegate == dsNode.localDataSource }
+            else -> facade.dataSources.filter { it.getDatabaseDialect()?.getDbms() == Dbms.ORACLE }
         }
 
-        val candidates = collectCandidates(facade, dataSources, selected)
-        LOG.info("Editor action: selected='$selected', candidates=${candidates.map { it.display() }}")
+        var candidates = collectCandidates(facade, dataSources, baseName)
+        if (explicitOwner != null) {
+            candidates = candidates.filter { it.schema.equals(explicitOwner, ignoreCase = true) }
+        }
+        LOG.info(
+            "Editor action: input='$raw', owner='${explicitOwner ?: currentOwner ?: "-"}', " +
+                "candidates=${candidates.map { it.display() }}"
+        )
 
         when {
             candidates.isEmpty() -> Messages.showInfoMessage(
                 project,
-                "'$selected' 객체를 Oracle 데이터소스에서 찾을 수 없습니다.",
+                "'$raw' 객체를 Oracle 데이터소스에서 찾을 수 없습니다.",
                 "Oracle Dictionary Inspector",
             )
-            candidates.size == 1 -> openDialog(project, candidates[0])
+            candidates.size == 1 -> openOrPopup(project, editor, candidates[0])
             else -> {
-                val items = candidates.map { it.display() }.toTypedArray()
+                // 현재 OWNER 또는 explicit OWNER 매칭이 정확히 하나면 그것을 자동 선택
+                val preferred = currentOwner ?: explicitOwner?.uppercase()
+                val pref = if (preferred != null) {
+                    candidates.filter { it.schema.equals(preferred, ignoreCase = true) }
+                } else emptyList()
+                if (pref.size == 1) {
+                    openOrPopup(project, editor, pref[0])
+                    return
+                }
+                val ordered = candidates.sortedBy {
+                    if (preferred != null && it.schema.equals(preferred, ignoreCase = true)) 0 else 1
+                }
+                val items = ordered.map { it.display() }.toTypedArray()
                 val choice = Messages.showChooseDialog(
                     project,
                     "동일한 이름의 객체가 여러 곳에 있습니다.",
@@ -70,8 +108,8 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
                     null,
                     items,
                     items[0],
-                ) ?: return
-                openDialog(project, candidates[choice])
+                )
+                if (choice >= 0) openOrPopup(project, editor, ordered[choice])
             }
         }
     }
@@ -81,9 +119,18 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         e.presentation.isEnabledAndVisible = editor != null && resolveTargetWord(editor) != null
     }
 
+    /** SCHEMA.NAME 형식이면 (SCHEMA, NAME)로 분리, 아니면 (null, raw). */
+    private fun parseQualified(raw: String): Pair<String?, String> {
+        val dot = raw.indexOf('.')
+        if (dot <= 0 || dot == raw.length - 1) return null to raw.trim('"', ' ')
+        val owner = raw.substring(0, dot).trim('"', ' ')
+        val name = raw.substring(dot + 1).trim('"', ' ')
+        return owner to name
+    }
+
     /**
-     * 선택 텍스트가 있으면 그걸 사용하고, 없으면 캐럿 위치 식별자를 사용한다.
-     * Oracle 식별자 문자: 영문자, 숫자, _, #, $
+     * 선택 텍스트가 있으면 그걸 사용하고, 없으면 캐럿 위치 식별자(SCHEMA.NAME 포함)를 추출.
+     * Oracle 식별자: 영문자·숫자·_·#·$ + 한 단계의 '.' (qualifier).
      */
     private fun resolveTargetWord(editor: Editor): String? {
         editor.selectionModel.selectedText?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
@@ -92,16 +139,16 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         val offset = editor.caretModel.offset.coerceIn(0, text.length)
         var start = offset
         var end = offset
-        while (start > 0 && isIdentifierChar(text[start - 1])) start--
-        while (end < text.length && isIdentifierChar(text[end])) end++
+        while (start > 0 && isIdentifierOrDot(text[start - 1])) start--
+        while (end < text.length && isIdentifierOrDot(text[end])) end++
         if (start == end) return null
         return text.subSequence(start, end).toString()
     }
 
-    private fun isIdentifierChar(c: Char): Boolean =
-        c.isLetterOrDigit() || c == '_' || c == '#' || c == '$'
+    private fun isIdentifierOrDot(c: Char): Boolean =
+        c.isLetterOrDigit() || c == '_' || c == '#' || c == '$' || c == '.'
 
-    // ── 내부 ──────────────────────────────────────────────────────────────────
+    // ── 검색 ──────────────────────────────────────────────────────────────────
     private fun collectCandidates(
         facade: DbPsiFacade,
         dataSources: List<DbDataSource>,
@@ -110,15 +157,23 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         val out = mutableListOf<Candidate>()
         for (ds in dataSources) {
             ds.getDasChildren(ObjectKind.SCHEMA).forEach { schema ->
-                // Tables
+                // TABLE
                 schema.getDasChildren(ObjectKind.TABLE)
                     .filterIsInstance<DasTable>()
                     .filter { it.name.equals(selected, ignoreCase = true) }
                     .forEach { das ->
                         val psi = facade.findElement(das) as? DbTable
-                        if (psi != null) out += Candidate.Tab(psi, schema.name, das.name)
+                        if (psi != null) out += Candidate.Tab(psi, schema.name, das.name, "TABLE")
                     }
-                // Standalone routines (패키지 내부는 제외)
+                // VIEW (IntelliJ DB 모델에서도 DbTable 캐스팅 가능)
+                schema.getDasChildren(ObjectKind.VIEW)
+                    .filterIsInstance<DasTable>()
+                    .filter { it.name.equals(selected, ignoreCase = true) }
+                    .forEach { das ->
+                        val psi = facade.findElement(das) as? DbTable
+                        if (psi != null) out += Candidate.Tab(psi, schema.name, das.name, "VIEW")
+                    }
+                // 표준 ROUTINE (패키지 내부 제외)
                 schema.getDasChildren(ObjectKind.ROUTINE)
                     .filterIsInstance<DasRoutine>()
                     .filter { it.name.equals(selected, ignoreCase = true) && it.packageName.isNullOrBlank() }
@@ -133,15 +188,63 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
                             out += Candidate.Rtn(psi, schema.name, das.name, kind)
                         }
                     }
+                // PACKAGE / SEQUENCE / SYNONYM — 전용 다이얼로그 없음 → 메타 팝업
+                addMetaCandidates(schema, ObjectKind.PACKAGE, "PACKAGE", selected, out)
+                addMetaCandidates(schema, ObjectKind.SEQUENCE, "SEQUENCE", selected, out)
+                addMetaCandidates(schema, ObjectKind.SYNONYM, "SYNONYM", selected, out)
             }
         }
         return out
     }
 
-    private fun openDialog(project: Project, c: Candidate) {
+    private fun addMetaCandidates(
+        schema: DasObject,
+        kind: ObjectKind,
+        kindLabel: String,
+        selected: String,
+        out: MutableList<Candidate>,
+    ) {
+        try {
+            schema.getDasChildren(kind)
+                .filter { it.name.equals(selected, ignoreCase = true) }
+                .forEach { das -> out += Candidate.Meta(schema.name, das.name, kindLabel) }
+        } catch (t: Throwable) {
+            LOG.debug("addMetaCandidates($kind) 실패 — 무시: ${t.message}")
+        }
+    }
+
+    // ── 결과 처리 ─────────────────────────────────────────────────────────────
+    private fun openOrPopup(project: Project, editor: Editor, c: Candidate) {
         when (c) {
             is Candidate.Tab -> OracleTableInfoDialog(project, c.table, c.schema, c.name).show()
             is Candidate.Rtn -> OracleRoutineInfoDialog(project, c.routine, c.schema, c.name).show()
+            is Candidate.Meta -> showMetaPopup(editor, c)
         }
+    }
+
+    private fun showMetaPopup(editor: Editor, c: Candidate) {
+        val html = buildString {
+            append("<html><div style='padding:6px 4px;'>")
+            append("<div style='font-size:11pt;'><b>").append(c.schema).append('.').append(c.name).append("</b></div>")
+            append("<div style='color:gray;margin-top:2px;'>").append(c.kind).append("</div>")
+            append("<div style='margin-top:8px;'>전용 다이얼로그가 없어 메타 정보만 표시합니다.</div>")
+            append("</div></html>")
+        }
+        val label = JBLabel(html).apply {
+            font = font.deriveFont(Font.PLAIN, 12f)
+            border = BorderFactory.createEmptyBorder(8, 12, 8, 12)
+        }
+        val panel = JPanel(BorderLayout()).apply {
+            background = UIManager.getColor("ToolTip.background") ?: background
+            add(label, BorderLayout.CENTER)
+        }
+        JBPopupFactory.getInstance()
+            .createComponentPopupBuilder(panel, label)
+            .setRequestFocus(false)
+            .setResizable(false)
+            .setMovable(true)
+            .setTitle("${c.schema}.${c.name}")
+            .createPopup()
+            .showInBestPositionFor(editor)
     }
 }

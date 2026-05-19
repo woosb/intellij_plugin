@@ -1,5 +1,6 @@
 package com.github.wooju.oracleinspector.ui
 
+import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
 import com.github.wooju.oracleinspector.model.RoutineInfo
 import com.github.wooju.oracleinspector.repository.DasRoutineRepository
 import com.github.wooju.oracleinspector.repository.JdbcRoutineRepository
@@ -8,13 +9,24 @@ import com.intellij.database.psi.DbRoutine
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.editor.ScrollType
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory
+import com.intellij.openapi.editor.markup.HighlighterLayer
+import com.intellij.openapi.editor.markup.TextAttributes
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.util.Disposer
+import com.intellij.testFramework.LightVirtualFile
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
@@ -26,6 +38,8 @@ import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import javax.swing.BorderFactory
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -53,6 +67,7 @@ class OracleRoutineInfoDialog(
     private lateinit var kindLabel: JBLabel
     private var info: RoutineInfo = DasRoutineRepository(routine, schemaName, routineName).loadRoutine()
     @Volatile private var loading: Boolean = false
+    private var sourceEditor: EditorEx? = null
 
     init {
         title = "$schemaName.$routineName"
@@ -65,7 +80,13 @@ class OracleRoutineInfoDialog(
     }
 
     override fun createCenterPanel(): JComponent {
-        val root = JPanel(BorderLayout())
+        val root = object : JPanel(BorderLayout()), DataProvider {
+            override fun getData(dataId: String): Any? = when (dataId) {
+                OracleInspectorDataKeys.CURRENT_OWNER.name -> schemaName
+                OracleInspectorDataKeys.CURRENT_DATA_SOURCE.name -> routine.dataSource
+                else -> null
+            }
+        }
         root.preferredSize = Dimension(960, 600)
         root.add(buildTopBar(), BorderLayout.NORTH)
         tabs = JBTabbedPane()
@@ -114,14 +135,14 @@ class OracleRoutineInfoDialog(
 
     // ── 탭 빌드 ───────────────────────────────────────────────────────────────
     private fun buildTabs() {
-        tabs.addTab("Source", createSqlPanel(info.source.ifBlank { "-- 소스 없음 --" }, header = "Source"))
+        tabs.addTab("Source", createSourceEditorPanel(info.source.ifBlank { "-- 소스 없음 --" }))
         tabs.addTab("Execute", createSqlPanel(OracleDictionaryService.buildExecuteBlock(info), header = "Execute"))
 
         val errorsModel = DictionaryTableModel(
             listOf("Line", "Position", "Text"),
             info.errors.map { listOf(it.line, it.position, it.text) },
         )
-        tabs.addTab("Errors  (${errorsModel.rowCount})", createTablePanel(errorsModel))
+        tabs.addTab("Errors  (${errorsModel.rowCount})", createErrorsTablePanel(errorsModel))
 
         val argsModel = DictionaryTableModel(
             listOf("Pos", "Name", "Direction", "Data Type", "Default"),
@@ -229,6 +250,126 @@ class OracleRoutineInfoDialog(
             border = BorderFactory.createEmptyBorder(0, 6, 0, 6)
             return this
         }
+    }
+
+    // ── Source 전용: IntelliJ Editor (라인번호 + SQL 신택스 + 에러 라인 강조) ──
+    private fun createSourceEditorPanel(source: String): JComponent {
+        val editorFactory = EditorFactory.getInstance()
+        val document = editorFactory.createDocument(source)
+        val editor = editorFactory.createViewer(document, project) as EditorEx
+        sourceEditor = editor
+
+        // SQL FileType 있으면 신택스 하이라이팅, 없으면 PlainText로 자연 폴백
+        val sqlFileType = FileTypeManager.getInstance().getFileTypeByExtension("sql")
+        val vfile = LightVirtualFile("source.sql", sqlFileType, source)
+        editor.highlighter = EditorHighlighterFactory.getInstance()
+            .createEditorHighlighter(project, vfile)
+
+        editor.settings.apply {
+            isLineNumbersShown = true
+            isLineMarkerAreaShown = true
+            isFoldingOutlineShown = true
+            isIndentGuidesShown = false
+            isCaretRowShown = true
+            additionalLinesCount = 0
+            additionalColumnsCount = 1
+        }
+        editor.setCaretEnabled(true)
+
+        applyErrorHighlights(editor)
+
+        Disposer.register(disposable) {
+            EditorFactory.getInstance().releaseEditor(editor)
+        }
+
+        val copyBtn = JButton(AllIcons.Actions.Copy).apply {
+            toolTipText = "클립보드에 복사"
+            isBorderPainted = false
+            isContentAreaFilled = false
+            cursor = Cursor(Cursor.HAND_CURSOR)
+            preferredSize = Dimension(28, 28)
+            addActionListener {
+                CopyPasteManager.getInstance().setContents(StringSelection(document.text))
+                icon = AllIcons.Actions.Checked
+                Timer(1200) { icon = AllIcons.Actions.Copy }.also { it.isRepeats = false; it.start() }
+            }
+        }
+        val toolbar = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
+                BorderFactory.createEmptyBorder(2, 6, 2, 4),
+            )
+            add(JLabel("Source").apply { font = font.deriveFont(Font.BOLD, 11f) }, BorderLayout.WEST)
+            add(copyBtn, BorderLayout.EAST)
+        }
+
+        return JPanel(BorderLayout()).apply {
+            add(toolbar, BorderLayout.NORTH)
+            add(editor.component, BorderLayout.CENTER)
+        }
+    }
+
+    private fun applyErrorHighlights(editor: EditorEx) {
+        val markup = editor.markupModel
+        markup.removeAllHighlighters()
+        if (info.errors.isEmpty()) return
+
+        val errorBg = JBColor(Color(255, 220, 220), Color(90, 35, 35))
+        val attr = TextAttributes().apply { backgroundColor = errorBg }
+
+        val lineCount = editor.document.lineCount
+        info.errors.forEach { err ->
+            val lineIdx = (err.line - 1).coerceAtLeast(0)
+            if (lineIdx >= lineCount) return@forEach
+            val highlighter = markup.addLineHighlighter(
+                lineIdx,
+                HighlighterLayer.WARNING,
+                attr,
+            )
+            highlighter.setErrorStripeMarkColor(JBColor.RED)
+            highlighter.setErrorStripeTooltip("Line ${err.line}, col ${err.position}: ${err.text}")
+        }
+    }
+
+    // ── Errors 탭: 행 더블클릭 → Source 탭 + 라인 점프 ──────────────────────
+    private fun createErrorsTablePanel(model: DictionaryTableModel): JComponent {
+        val jbTable = JBTable(model).apply {
+            setShowGrid(false)
+            intercellSpacing = Dimension(0, 0)
+            rowHeight = 24
+            autoResizeMode = JTable.AUTO_RESIZE_OFF
+            tableHeader.reorderingAllowed = true
+            setDefaultRenderer(Any::class.java, StripedCellRenderer())
+        }
+        autoFitColumns(jbTable, model)
+
+        jbTable.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 2) {
+                    val viewRow = jbTable.rowAtPoint(e.point).takeIf { it >= 0 } ?: return
+                    val modelRow = jbTable.convertRowIndexToModel(viewRow)
+                    val line = model.getValueAt(modelRow, 0) as? Int ?: return
+                    jumpToSourceLine(line)
+                }
+            }
+        })
+
+        return JBScrollPane(jbTable)
+    }
+
+    private fun jumpToSourceLine(oneBasedLine: Int) {
+        val editor = sourceEditor ?: return
+        val srcIdx = (0 until tabs.tabCount).indexOfFirst { tabs.getTitleAt(it) == "Source" }
+        if (srcIdx >= 0) tabs.selectedIndex = srcIdx
+
+        val lineCount = editor.document.lineCount
+        if (lineCount == 0) return
+        val line = (oneBasedLine - 1).coerceIn(0, lineCount - 1)
+        val offset = editor.document.getLineStartOffset(line)
+        editor.caretModel.moveToOffset(offset)
+        editor.scrollingModel.scrollToCaret(ScrollType.CENTER)
+        editor.contentComponent.requestFocusInWindow()
     }
 
     private fun createSqlPanel(sql: String, header: String = "SQL"): JComponent {
