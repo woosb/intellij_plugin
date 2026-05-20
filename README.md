@@ -132,9 +132,16 @@ brew install --cask temurin@21
 # 설치 경로 예시:
 #   ~/Library/Java/JavaVirtualMachines/jdk-21.x.x+xx
 
-# 3) gradle.properties의 JDK 경로를 본인 환경에 맞게 조정
-#    파일: gradle.properties
-#    예:   org.gradle.java.home=/Users/<you>/Library/Java/JavaVirtualMachines/jdk-21.0.5+11
+# 3) 사용자 home의 ~/.gradle/gradle.properties 에 JDK 경로 지정 (1회만)
+#    프로젝트별 gradle.properties는 본인 PC 경로를 박지 않고,
+#    사용자 home 파일에 두면 어느 worktree/clone에서나 자동 적용됩니다.
+mkdir -p ~/.gradle
+cat >> ~/.gradle/gradle.properties <<'EOF'
+
+# Oracle Dictionary Inspector 빌드용 (Kotlin이 JBR 25 미지원)
+org.gradle.java.home=/Users/<you>/Library/Java/JavaVirtualMachines/jdk-21.x.x+xx/Contents/Home
+EOF
+#    → <you>와 실제 JDK 21 경로를 본인 환경에 맞게 수정
 
 # 4) GitHub CLI 설치 + 인증 (PR/머지 자동화 스크립트 사용에 필요)
 brew install gh

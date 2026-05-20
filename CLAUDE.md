@@ -14,7 +14,7 @@ DataGrip / IntelliJ IDEA Ultimate에서 Oracle 딕셔너리(테이블 · 뷰 · 
 | Kotlin | 2.2.0 |
 | Gradle | 8.10 (wrapper 포함) |
 | IntelliJ Platform | `org.jetbrains.intellij.platform` 2.6.0 |
-| 빌드 JDK | **Temurin 21** (`gradle.properties`의 `org.gradle.java.home`로 강제 지정) |
+| 빌드 JDK | **Temurin 21** — `~/.gradle/gradle.properties`의 `org.gradle.java.home`로 지정 (프로젝트 파일 아닌 **사용자 home**) |
 | 대상 IDE | IntelliJ IDEA Ultimate **2024.3.5+** (`sinceBuild=243`) + 번들 `com.intellij.database` |
 
 > JDK 25 / JBR 25로는 Kotlin 컴파일러의 `JavaVersion.parse()`가 실패한다. Temurin 21 경로를 그대로 둘 것.
