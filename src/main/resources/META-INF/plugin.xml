@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.github.wooju.oracle-dictionary-inspector</id>
     <name>Oracle Dictionary Inspector</name>
-    <vendor email="" url="">wooju</vendor>
+    <vendor email="sonpapadev@gmail.com" url="https://github.com/woosb/intellij_plugin">wooju</vendor>
     <description><![CDATA[
         <h3>DataGrip / IntelliJ IDEA Ultimate plugin for Oracle dictionary inspection.</h3>
         <p>
@@ -17,11 +17,40 @@
         </ul>
         <hr/>
         <p lang="ko">
-          DataGrip / IntelliJ IDEA Ultimate에서 Oracle 딕셔너리(테이블·뷰·프로시저·펑션·세션·락)를
+          DataGrip / IntelliJ IDEA Ultimate에서 Oracle 딕셔너리(테이블·뷰·프로시저·펑션·패키지·시퀀스·시노님·세션·락)를
           탭 다이얼로그와 전용 Tool Window로 빠르게 보여주는 플러그인입니다.
-          Toad 스타일 Describe + 페이징 데이터 미리보기 + PL/SQL 컴파일 오류 라인 강조 + 실시간 세션/락 브라우저 제공.
+          Toad 스타일 Describe + 페이징 데이터 미리보기 + PL/SQL 컴파일 오류 라인 강조 + 실시간 세션/락 브라우저 + Explain Plan 시각화 제공.
         </p>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>1.0.0 — initial release</h3>
+        <p><b>Object dialogs</b></p>
+        <ul>
+          <li>Tables / Views — Columns / Keys / FK / Indexes / Checks / <b>Triggers</b> / <b>Data preview (500-row paging + WHERE/ORDER BY)</b> / DDL / SELECT / Comments SQL.</li>
+          <li>Views use <code>ALL_VIEWS.TEXT</code> for the DDL tab (<code>CREATE OR REPLACE VIEW</code>).</li>
+          <li>Standalone Procedures / Functions — Source (IntelliJ editor, syntax + line-number markers for compile errors) / Execute template / Errors (double-click jumps to source line) / Arguments.</li>
+          <li>Packages — Spec / Body / Routines / Errors with per-source-type error highlighting and double-click jump.</li>
+          <li>Sequences / Synonyms — Property/Value dialogs.</li>
+        </ul>
+        <p><b>Oracle Sessions tool window</b></p>
+        <ul>
+          <li>Sessions / Locks / Long Ops tabs with auto-refresh (5s).</li>
+          <li>Sessions tab has client-side USER / STATUS / PROGRAM / MODULE filter.</li>
+          <li>Bottom sub-tabs: Current SQL, Wait History (<code>V$SESSION_WAIT_HISTORY</code>), Session Stats (curated <code>V$SESSTAT</code>), Explain Plan (<code>V$SQL_PLAN</code> with expensive-operation highlighting).</li>
+          <li>Right-click → Kill Session / Kill Holder with confirmation dialog.</li>
+        </ul>
+        <p><b>Editor describe action</b></p>
+        <ul>
+          <li>Single <code>Alt+Shift+O</code> shortcut handles every object type, supports <code>SCHEMA.NAME</code>, prefers the current dialog's OWNER.</li>
+        </ul>
+        <p><b>Cross-cutting</b></p>
+        <ul>
+          <li>Inline search on every table (just start typing).</li>
+          <li>Column widths persist via <code>PropertiesComponent</code>.</li>
+          <li>Localised: English (default) + Korean.</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.database</depends>
