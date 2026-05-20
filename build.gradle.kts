@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -18,7 +19,7 @@ java {
 }
 
 group = "com.github.wooju"
-version = "1.0-SNAPSHOT"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -45,6 +46,16 @@ intellijPlatform {
         ideaVersion {
             sinceBuild = "243"
             untilBuild = provider { null }
+        }
+    }
+
+    // ./gradlew verifyPlugin 실행 시 검사할 IDE 목록.
+    //  - recommended() 는 2024.3 ~ 최신 EAP까지 6개를 끌어와 매우 오래 걸린다.
+    //  - 우리는 sinceBuild = "243"(2024.3) 부터 호환을 보장하면 충분하므로
+    //    빌드 타깃과 동일한 2024.3.5 한 개만 검사한다. 출시 직전에 더 추가할 수 있음.
+    pluginVerification {
+        ides {
+            ide(IntelliJPlatformType.IntellijIdeaUltimate, "2024.3.5")
         }
     }
 }
