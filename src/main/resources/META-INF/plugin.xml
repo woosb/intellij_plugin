@@ -24,6 +24,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.1 — Marketplace moderation fixes</h3>
+        <ul>
+          <li>Replaced internal <code>DbDataSource.getDelegate()</code> with the public <code>DbImplUtil.getMaybeLocalDataSource()</code> across all JDBC repositories and the editor describe action.</li>
+          <li>Rewrote the Sessions tool window factory in Java so Kotlin no longer emits synthetic overrides of internal <code>ToolWindowFactory</code> default methods.</li>
+        </ul>
         <h3>1.0.0 — initial release</h3>
         <p><b>Object dialogs</b></p>
         <ul>

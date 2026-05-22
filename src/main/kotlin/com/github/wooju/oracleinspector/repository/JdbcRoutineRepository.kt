@@ -6,8 +6,8 @@ import com.github.wooju.oracleinspector.model.RoutineError
 import com.github.wooju.oracleinspector.model.RoutineInfo
 import com.github.wooju.oracleinspector.model.RoutineKind
 import com.intellij.database.dataSource.DatabaseConnectionManager
-import com.intellij.database.dataSource.LocalDataSource
 import com.intellij.database.psi.DbDataSource
+import com.intellij.database.util.DbImplUtil
 import com.intellij.database.remote.jdbc.RemoteConnection
 import com.intellij.database.remote.jdbc.RemotePreparedStatement
 import com.intellij.database.remote.jdbc.RemoteResultSet
@@ -26,7 +26,7 @@ class JdbcRoutineRepository(
 ) : RoutineMetadataRepository {
 
     override fun loadRoutine(): RoutineInfo {
-        val local = dataSource.delegate as? LocalDataSource
+        val local = DbImplUtil.getMaybeLocalDataSource(dataSource)
             ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.no.local.datasource"))
         val ref = DatabaseConnectionManager.getInstance()
             .build(project, local)
