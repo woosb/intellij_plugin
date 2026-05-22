@@ -11,6 +11,7 @@ import com.intellij.database.model.DasObject
 import com.intellij.database.model.DasRoutine
 import com.intellij.database.model.DasTable
 import com.intellij.database.model.ObjectKind
+import com.intellij.database.util.DbImplUtil
 import com.intellij.database.psi.DbDataSource
 import com.intellij.database.psi.DbPsiFacade
 import com.intellij.database.psi.DbRoutine
@@ -80,7 +81,7 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
         val dsNode = e.getData(DatabaseView.DATABASE_RELATED_SINGLE_DATA_SOURCE)
         val dataSources: List<DbDataSource> = when {
             currentDs != null -> listOf(currentDs)
-            dsNode != null -> facade.dataSources.filter { it.delegate == dsNode.localDataSource }
+            dsNode != null -> facade.dataSources.filter { DbImplUtil.getMaybeLocalDataSource(it) == dsNode.localDataSource }
             else -> facade.dataSources.filter { it.getDatabaseDialect()?.getDbms() == Dbms.ORACLE }
         }
 

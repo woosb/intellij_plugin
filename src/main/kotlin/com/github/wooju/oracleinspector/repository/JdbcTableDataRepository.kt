@@ -2,8 +2,8 @@ package com.github.wooju.oracleinspector.repository
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.intellij.database.dataSource.DatabaseConnectionManager
-import com.intellij.database.dataSource.LocalDataSource
 import com.intellij.database.psi.DbDataSource
+import com.intellij.database.util.DbImplUtil
 import com.intellij.database.remote.jdbc.RemoteConnection
 import com.intellij.database.remote.jdbc.RemoteResultSet
 import com.intellij.openapi.project.Project
@@ -38,7 +38,7 @@ class JdbcTableDataRepository(
         require(pageIndex >= 0) { "pageIndex must be >= 0" }
         require(pageSize > 0) { "pageSize must be > 0" }
 
-        val local = dataSource.delegate as? LocalDataSource
+        val local = DbImplUtil.getMaybeLocalDataSource(dataSource)
             ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.no.local.datasource"))
 
         val ref = DatabaseConnectionManager.getInstance()

@@ -8,8 +8,8 @@ import com.github.wooju.oracleinspector.model.SessionInfo
 import com.github.wooju.oracleinspector.model.SessionStat
 import com.github.wooju.oracleinspector.model.WaitEvent
 import com.intellij.database.dataSource.DatabaseConnectionManager
-import com.intellij.database.dataSource.LocalDataSource
 import com.intellij.database.psi.DbDataSource
+import com.intellij.database.util.DbImplUtil
 import com.intellij.database.remote.jdbc.RemoteConnection
 import com.intellij.database.remote.jdbc.RemotePreparedStatement
 import com.intellij.database.remote.jdbc.RemoteResultSet
@@ -312,7 +312,7 @@ class JdbcSessionRepository(
 
     // ── 내부 ──────────────────────────────────────────────────────────────────
     private fun <T> withConnection(block: (RemoteConnection) -> T): T {
-        val local = dataSource.delegate as? LocalDataSource
+        val local = DbImplUtil.getMaybeLocalDataSource(dataSource)
             ?: throw IllegalStateException(OracleInspectorBundle.message("common.error.no.local.datasource"))
         val ref = DatabaseConnectionManager.getInstance()
             .build(project, local)
