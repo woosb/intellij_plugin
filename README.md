@@ -195,27 +195,44 @@ gh auth login
 ```
 src/main/
 ├── kotlin/com/github/wooju/oracleinspector/
+│   ├── OracleInspectorBundle.kt                    # i18n DynamicBundle 진입점
 │   ├── actions/
 │   │   ├── OracleInspectorDataKeys.kt              # 다이얼로그 컨텍스트(OWNER/DataSource) DataKey
 │   │   ├── ShowOracleTableInfoAction.kt            # DB 패널 우클릭 액션
 │   │   └── ShowOracleTableInfoFromEditorAction.kt  # 에디터/Source 탭 단축키 액션
 │   ├── model/
+│   │   ├── LockInfo.kt                             # 락 DTO
+│   │   ├── PackageInfo.kt                          # 패키지 DTO
 │   │   ├── RoutineInfo.kt                          # 프로시저·펑션 DTO
+│   │   ├── SessionInfo.kt                          # 세션 DTO
+│   │   ├── SimpleObjectInfo.kt                     # 시퀀스·시노님 DTO
 │   │   └── TableInfo.kt                            # 테이블 DTO
 │   ├── repository/
+│   │   ├── DasPackageRepository.kt                 # 캐시(DAS) → PackageInfo
 │   │   ├── DasRoutineRepository.kt                 # 캐시(DAS) → RoutineInfo
 │   │   ├── DasTableRepository.kt                   # 캐시(DAS) → TableInfo
+│   │   ├── JdbcPackageRepository.kt                # JDBC → PackageInfo
 │   │   ├── JdbcRoutineRepository.kt                # JDBC → RoutineInfo
+│   │   ├── JdbcSessionRepository.kt                # JDBC → SessionInfo / LockInfo (V$* 조회)
+│   │   ├── JdbcSimpleObjectRepository.kt           # JDBC → SimpleObjectInfo (SEQUENCE/SYNONYM)
 │   │   ├── JdbcTableDataRepository.kt              # JDBC → Data 탭 페이징 조회
 │   │   ├── JdbcTableMetadataRepository.kt          # JDBC → TableInfo
+│   │   ├── PackageMetadataRepository.kt            # Package repo 인터페이스
 │   │   ├── RoutineMetadataRepository.kt            # Routine repo 인터페이스
 │   │   └── TableMetadataRepository.kt              # Table repo 인터페이스
 │   ├── service/
 │   │   └── OracleDictionaryService.kt              # DDL/SELECT/Execute 등 생성 + ModelBuilder
 │   └── ui/
+│       ├── ColumnWidthMemo.kt                      # 컬럼 너비 PropertiesComponent 저장
 │       ├── DictionaryTableModel.kt                 # 범용 TableModel (숫자 정렬 지원)
+│       ├── OraclePackageInfoDialog.kt              # 패키지 다이얼로그
 │       ├── OracleRoutineInfoDialog.kt              # 프로시저·펑션 다이얼로그
-│       └── OracleTableInfoDialog.kt                # 테이블 다이얼로그
+│       ├── OracleSimpleObjectDialogs.kt            # 시퀀스·시노님 다이얼로그
+│       ├── OracleTableInfoDialog.kt                # 테이블·뷰 다이얼로그
+│       ├── TableSearchSupport.kt                   # 인라인 검색 (TableSpeedSearch 래퍼)
+│       └── sessions/
+│           ├── OracleSessionsPanel.kt              # Sessions Tool Window UI
+│           └── OracleSessionsToolWindowFactory.java # ToolWindowFactory (Java — Kotlin synthetic 오버라이드 회피)
 └── resources/META-INF/plugin.xml
 ```
 
@@ -238,10 +255,9 @@ src/main/
 - [x] 컬럼 너비 사용자 조정값 저장 (`PropertiesComponent`)
 - [x] Session Stats sub-tab (`V$SESSTAT + V$STATNAME`)
 - [x] Explain Plan sub-tab (`V$SQL_PLAN`) — 비싼 OPERATION 빨강 강조
-- [x] 모든 테이블에 인라인 검색 (`TableSpeedSearch`)
-- [ ] 인라인 검색 (Ctrl+F) — 모든 테이블/Source에서
-- [ ] 컬럼 너비 사용자 조정값 저장
-- [ ] JetBrains 플러그인 마켓플레이스 배포
+- [x] 모든 테이블에 인라인 검색 (`TableSpeedSearch` — 포커스 후 타이핑)
+- [x] JetBrains 플러그인 마켓플레이스 배포 (v1.0.1 — moderation 수정 완료)
+- [ ] Ctrl+F 인라인 검색 — Source 에디터 포함 전체 지원
 
 ---
 
