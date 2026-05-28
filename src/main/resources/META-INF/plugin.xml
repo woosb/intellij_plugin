@@ -60,6 +60,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.4 — Preserve session selection across Auto 5s refresh</h3>
+        <ul>
+          <li>The Sessions tool window now remembers <b>which session row you had selected and the column sort order</b> when the 5-second auto-refresh fires. Previously the selection (and therefore the Current SQL / Wait History / Stats / Explain Plan sub-tabs) flickered away every cycle.</li>
+          <li>If the previously selected session is still alive after the refresh, the row is re-selected and scrolled into view; if it has logged out or been killed, the sub-tabs clear gracefully.</li>
+        </ul>
         <h3>1.0.3 — Slimmer in-IDE description</h3>
         <ul>
           <li>Trimmed the in-IDE Plugins-screen description to a concise summary (How to open + key features + GitHub link). The Marketplace listing page itself can host the full Getting Started content via the dashboard.</li>
