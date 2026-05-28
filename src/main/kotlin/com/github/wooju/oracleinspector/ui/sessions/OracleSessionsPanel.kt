@@ -420,6 +420,17 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private fun renderSessions(list: List<SessionInfo>) {
+        // Preserve user state across the model swap so Auto-5s refresh does not
+        // wipe the current selection / sort. Without this, the selected row (and
+        // therefore Current SQL / Wait History / Stats / Plan) flickers away
+        // every 5 seconds.
+        val keepKey: Pair<Int, Long>? = run {
+            val viewRow = sessionsTable.selectedRow.takeIf { it >= 0 } ?: return@run null
+            val modelRow = sessionsTable.convertRowIndexToModel(viewRow)
+            sessions.getOrNull(modelRow)?.let { it.sid to it.serial }
+        }
+        val keepSortKeys = sessionsTable.rowSorter?.sortKeys?.toList()
+
         sessions = list
         val rows = list.map { s ->
             listOf(
@@ -433,13 +444,32 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
         sessionsTable.model = newModel
         val sorter = TableRowSorter(newModel)
         sorter.rowFilter = makeSessionRowFilter()
+        if (!keepSortKeys.isNullOrEmpty()) sorter.sortKeys = keepSortKeys
         sessionsTable.rowSorter = sorter
         autoFitColumns(sessionsTable, newModel)
         ColumnWidthMemo.apply(sessionsTable, "sessions.list")
         statusLabel.text = OracleInspectorBundle.message(
             "sessions.status.count.with.time", list.size, java.time.LocalTime.now().withNano(0),
         )
-        ApplicationManager.getApplication().runWriteAction { sqlDocument.setText("") }
+
+        // Restore selection if the same (SID, SERIAL#) is still alive.
+        // The ListSelectionListener will re-fire and repopulate the bottom
+        // sub-tabs (Current SQL / Wait History / Stats / Plan).
+        val restored = keepKey?.let { (sid, serial) ->
+            val modelIdx = list.indexOfFirst { it.sid == sid && it.serial == serial }
+            if (modelIdx < 0) return@let false
+            val viewIdx = sessionsTable.convertRowIndexToView(modelIdx)
+            if (viewIdx < 0) return@let false
+            sessionsTable.setRowSelectionInterval(viewIdx, viewIdx)
+            sessionsTable.scrollRectToVisible(sessionsTable.getCellRect(viewIdx, 0, true))
+            true
+        } ?: false
+
+        // Only clear the SQL editor when the previously selected session is gone
+        // (logged out / killed). Otherwise the selection listener will refill it.
+        if (!restored) {
+            ApplicationManager.getApplication().runWriteAction { sqlDocument.setText("") }
+        }
     }
 
     private fun applySessionFilter() {
