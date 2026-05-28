@@ -3,176 +3,69 @@
     <name>Oracle Dictionary Inspector</name>
     <vendor email="sonpapadev@gmail.com" url="https://github.com/woosb/intellij_plugin">wooju</vendor>
     <description><![CDATA[
-    <h3>One-screen Oracle dictionary inspection for DataGrip / IntelliJ IDEA Ultimate</h3>
+        <h3>Oracle dictionary inspector for DataGrip / IntelliJ IDEA Ultimate</h3>
         <p>
-          This plugin brings the <i>Describe / Alter Table / Session Browser</i> screens
-          that Toad for Oracle users are used to, directly into IntelliJ. Tasks that
-          normally take several clicks in DataGrip — or require an external tool — are
-          organised into <b>tabbed dialogs and a dedicated tool window</b>.
+          Toad-style describe dialogs for Oracle objects, plus a dedicated tool window
+          for sessions, locks, and execution plans — all inside IntelliJ.
         </p>
 
-        <h4>Who is this for</h4>
+        <h4>How to open</h4>
         <ul>
-          <li>Backend developers using DataGrip / IntelliJ IDEA Ultimate against Oracle</li>
-          <li>DBAs and tuning engineers who monitor sessions, locks, and execution plans frequently</li>
-          <li>Anyone migrating from Toad / SQL Developer / Orange to the IntelliJ family</li>
+          <li><b>Database panel</b> → right-click a table / view / procedure / function / package / sequence / synonym → <b>Oracle Dictionary Info</b></li>
+          <li><b>SQL editor</b> → select an identifier (or place the caret on it) → right-click → <b>Oracle Dictionary Info</b></li>
+          <li>Shortcut anywhere: <code>Alt+Shift+O</code> (macOS: <code>⌥+Shift+O</code>)</li>
         </ul>
 
-        <h4>Table &amp; View dialog</h4>
+        <h4>What it does</h4>
         <ul>
-          <li><b>Columns / Keys / Foreign Keys / Indexes / Checks / Triggers</b> — full metadata on one screen</li>
-          <li><b>Data tab</b>: live row preview with <b>500-row paging</b>; type <code>WHERE</code> / <code>ORDER BY</code> and press Enter to filter instantly</li>
-          <li><b>DDL tab</b>: <code>CREATE TABLE</code> for tables, or <code>CREATE OR REPLACE VIEW</code> rebuilt from <code>ALL_VIEWS.TEXT</code> for views</li>
-          <li><b>SELECT tab</b>: ready-to-copy <code>SELECT</code> over every column</li>
+          <li><b>Tables / Views</b> — Columns, Keys, FK, Indexes, Checks, Triggers, plus a <b>Data preview with 500-row paging + WHERE/ORDER BY filters</b>, DDL and SELECT</li>
+          <li><b>Procedures / Functions / Packages</b> — IntelliJ-editor source with line numbers, SQL syntax, and <b>compile-error line markers</b>; double-click an Errors row to jump to the line</li>
+          <li><b>Oracle Sessions</b> tool window — V$SESSION browser, Locks, Long Ops, with per-session <b>Current SQL / Wait History / Session Stats / Explain Plan</b> sub-tabs; right-click → Kill Session</li>
+          <li>Localised: English (default) + Korean (한국어)</li>
+          <li><b>100% read-only</b> — except the explicitly confirmed Kill Session, every command is a SELECT</li>
         </ul>
 
-        <h4>Procedure / Function / Package dialog</h4>
-        <ul>
-          <li><b>Source tab is a real IntelliJ Editor</b> — line numbers, SQL syntax highlighting, caret-row highlight, folding</li>
-          <li>Compile errors from <code>ALL_ERRORS</code> are painted directly onto the source: <b>red line backgrounds + error stripes</b>. Hover the stripe for a <code>Line N, col M: message</code> tooltip</li>
-          <li><b>Double-click an Errors row</b> to jump to the Source tab and the exact line</li>
-          <li>Packages get four tabs: <b>Spec / Body / Routines / Errors</b>. Each source tab only highlights errors that belong to it</li>
-          <li><b>Execute tab</b>: a ready-made <code>BEGIN…END;</code> (or <code>SELECT fn(...) FROM DUAL</code>) template with declared variables for every IN/OUT parameter</li>
-        </ul>
-
-        <h4>Describe action — <code>Alt+Shift+O</code> (macOS <code>⌥+Shift+O</code>)</h4>
-        <ul>
-          <li>The same shortcut works from the DB panel tree, any SQL editor, and the Source editor inside our dialogs</li>
-          <li>Recognises TABLE / VIEW / PROCEDURE / FUNCTION / PACKAGE / SEQUENCE / SYNONYM automatically</li>
-          <li>Accepts <code>SCHEMA.NAME</code>; when invoked from inside a dialog, <b>matches the current dialog's OWNER first</b></li>
-          <li>If multiple objects with the same name exist, a chooser appears (the preferred OWNER goes to the top)</li>
-        </ul>
-
-        <h4>Oracle Sessions tool window</h4>
         <p>
-          A dedicated panel pins itself to the bottom of the IDE. Think of it as a
-          <b>Toad-style Session Browser inside IntelliJ</b>.
-        </p>
-        <ul>
-          <li><b>V$SESSION</b> browser with client-side <b>USER / STATUS / PROGRAM / MODULE filters</b> — instant, no re-query</li>
-          <li><b>5-second auto-refresh</b> toggle</li>
-          <li>Blocked sessions get a <b>red row background</b>; <code>ACTIVE</code> sessions get <b>green text</b> for at-a-glance triage</li>
-          <li>Selecting a session refreshes all <b>four bottom sub-tabs</b> at once:
-            <ul>
-              <li><b>Current SQL</b> — <code>V$SQLAREA.SQL_FULLTEXT</code> shown in an IntelliJ editor with SQL syntax</li>
-              <li><b>Wait History</b> — last 10 entries from <code>V$SESSION_WAIT_HISTORY</code></li>
-              <li><b>Session Stats</b> — curated counters from <code>V$SESSTAT</code> (logical/physical reads, parse, CPU, sorts, …)</li>
-              <li><b>Explain Plan</b> — tree from <code>V$SQL_PLAN</code>; <b>TABLE ACCESS FULL / CARTESIAN are highlighted in red</b>, <b>INDEX scans in green</b></li>
-            </ul>
-          </li>
-          <li><b>Locks tab</b>: <code>V$LOCKED_OBJECT</code> + <code>V$SESSION</code> + <code>ALL_OBJECTS</code> join. Exclusive / Row-X modes highlighted in red</li>
-          <li><b>Long Ops tab</b>: <code>V$SESSION_LONGOPS</code> progress (backups, index builds, stats gathering)</li>
-          <li><b>Right-click → Kill Session / Kill Holder Session</b> — confirmation dialog shows the exact <code>ALTER SYSTEM KILL SESSION '...'</code> that will be executed</li>
-        </ul>
-
-        <h4>And</h4>
-        <ul>
-          <li><b>Inline search on every table</b> — just start typing while a table is focused, IntelliJ-style</li>
-          <li><b>Column widths persist</b> — resize once and they stay across IDE restarts</li>
-          <li><b>Localised</b> — English (default), Korean is picked up automatically when the IDE locale is <code>ko_KR</code></li>
-        </ul>
-
-        <h4>Required Oracle privileges</h4>
-        <ul>
-          <li>Table / view / procedure metadata: <b>regular user privileges (SELECT on <code>ALL_*</code> views)</b></li>
-          <li>Sessions / Locks / Explain Plan: <b>SELECT on V$ dynamic views</b> — the simplest grant is
-            <code>GRANT SELECT_CATALOG_ROLE TO &lt;user&gt;;</code></li>
-          <li>Kill Session: <code>ALTER SYSTEM</code> (be careful with this one in production)</li>
-        </ul>
-
-        <h4>Safety — 100% read-only</h4>
-        <p>
-          Apart from Kill Session (always confirmed by the user), every command this
-          plugin sends to the database is a <b><code>SELECT</code></b>. No
-          <code>INSERT / UPDATE / DELETE / DDL</code>, ever. Safe to attach to production
-          databases.
+          Full manual, screenshots, and setup guide on the
+          <a href="https://github.com/woosb/intellij_plugin">GitHub repository</a>.
         </p>
 
         <hr/>
-        <h3>DataGrip / IntelliJ IDEA Ultimate에서 Oracle 딕셔너리를 한 화면에서 조회하는 플러그인</h3>
+        <h3>DataGrip / IntelliJ IDEA Ultimate용 Oracle 딕셔너리 조회 플러그인</h3>
         <p>
-          Toad for Oracle의 <i>Describe / Alter Table / Session Browser</i> 화면을
-          IntelliJ 안으로 가져옵니다. DataGrip 기본 UI로는 클릭 여러 번 또는 별도 도구가
-          필요했던 작업들을 <b>탭 다이얼로그 한 화면 + 전용 Tool Window</b>로 정리했습니다.
+          Toad 스타일의 객체 Describe 다이얼로그 + 세션·락·실행 계획 전용 Tool Window를
+          IntelliJ 안에서 그대로 제공합니다.
         </p>
 
-        <h4>이런 분께 권장합니다</h4>
+        <h4>여는 방법</h4>
         <ul>
-          <li>DataGrip / IntelliJ IDEA Ultimate로 Oracle을 다루는 백엔드 개발자</li>
-          <li>세션·락·실행 계획 모니터링이 잦은 DBA 및 튜닝 담당자</li>
-          <li>Toad / SQL Developer / Orange에서 IntelliJ 계열로 옮긴 사용자</li>
+          <li><b>Database 패널</b>에서 테이블/뷰/프로시저/펑션/패키지/시퀀스/시노님 <b>우클릭 → Oracle Dictionary Info</b></li>
+          <li><b>SQL 에디터</b>에서 식별자 선택(또는 캐럿 위치) → <b>우클릭 → Oracle Dictionary Info</b></li>
+          <li>어디서나 단축키: <code>Alt+Shift+O</code> (macOS: <code>⌥+Shift+O</code>)</li>
         </ul>
 
-        <h4>테이블 · 뷰 다이얼로그</h4>
+        <h4>주요 기능</h4>
         <ul>
-          <li><b>Columns / Keys / Foreign Keys / Indexes / Checks / Triggers</b> — 메타데이터 한 화면</li>
-          <li><b>Data 탭</b>: 실제 데이터를 <b>500행 페이징</b>으로 미리보기. <code>WHERE</code> / <code>ORDER BY</code> 입력 후 Enter로 즉시 필터링</li>
-          <li><b>DDL 탭</b>: 테이블은 <code>CREATE TABLE</code>, 뷰는 <code>ALL_VIEWS.TEXT</code> 본문으로 <code>CREATE OR REPLACE VIEW</code> 자동 생성</li>
-          <li><b>SELECT 탭</b>: 전체 컬럼 <code>SELECT</code> 쿼리 (클립보드 복사 한 클릭)</li>
+          <li><b>테이블·뷰</b> — Columns / Keys / FK / Indexes / Checks / Triggers + <b>500행 페이징 데이터 미리보기 + WHERE/ORDER BY 필터</b> + DDL / SELECT</li>
+          <li><b>프로시저·펑션·패키지</b> — IntelliJ Editor 본문 (라인 번호, 신택스, <b>컴파일 오류 라인 강조</b>). Errors 행 더블클릭 → Source 점프</li>
+          <li><b>Oracle Sessions</b> Tool Window — V$SESSION 브라우저, Locks, Long Ops + 세션별 <b>Current SQL / Wait History / Stats / Explain Plan</b> sub-tab. 우클릭 → Kill Session</li>
+          <li>다국어 — 영문(기본) + 한국어 (IDE 로케일 자동)</li>
+          <li><b>100% 읽기 전용</b> — 명시 확인을 거치는 Kill Session 외 모든 명령은 SELECT</li>
         </ul>
 
-        <h4>프로시저 · 펑션 · 패키지 다이얼로그</h4>
-        <ul>
-          <li><b>Source 탭은 IntelliJ Editor</b> — 라인 번호, SQL 신택스 하이라이팅, 캐럿 행 강조, 폴딩 그대로 적용</li>
-          <li><code>ALL_ERRORS</code>의 컴파일 오류를 <b>Source 탭의 해당 라인에 빨간 배경</b>으로 강조. 우측 에러 스트라이프 마우스 호버 시 <code>Line N, col M: 오류 메시지</code> 툴팁</li>
-          <li><b>Errors 탭 행을 더블클릭</b>하면 Source 탭으로 자동 이동 + 해당 라인으로 캐럿 점프</li>
-          <li>패키지는 <b>Spec / Body / Routines / Errors</b> 4탭. Spec과 Body 각자 자기 영역 오류만 빨갛게</li>
-          <li><b>Execute 탭</b>: IN/OUT 매개변수가 채워진 <code>BEGIN…END;</code> 또는 <code>SELECT fn(...) FROM DUAL</code> 실행 템플릿</li>
-        </ul>
-
-        <h4>Describe 액션 — <code>Alt+Shift+O</code> (macOS <code>⌥+Shift+O</code>)</h4>
-        <ul>
-          <li>DB 패널 트리, SQL 콘솔, 다이얼로그 안의 Source 에디터 — <b>어디서나 같은 단축키</b></li>
-          <li>TABLE / VIEW / PROCEDURE / FUNCTION / PACKAGE / SEQUENCE / SYNONYM <b>자동 인식</b></li>
-          <li><code>SCHEMA.NAME</code> 형식 지원, 다이얼로그 안에서 호출 시 <b>현재 OWNER 우선 매칭</b></li>
-          <li>동명 객체 여러 개면 선택 다이얼로그 (현재 OWNER 후보가 맨 위)</li>
-        </ul>
-
-        <h4>Oracle Sessions Tool Window</h4>
         <p>
-          IDE 하단에 전용 패널이 생깁니다. <b>Toad의 Session Browser와 동등한 수준</b>이라고 보시면 됩니다.
-        </p>
-        <ul>
-          <li><b>V$SESSION</b> 브라우저 — USER / STATUS / PROGRAM / MODULE 클라이언트 사이드 필터 (재조회 없이 즉시)</li>
-          <li><b>5초 자동 새로고침</b> 토글</li>
-          <li>차단된 세션은 행 배경 <b>빨강</b>, ACTIVE 세션은 글자 <b>초록</b>으로 한눈에 구분</li>
-          <li>세션 행 선택 시 <b>하단 4개 sub-tab이 동시에 자동 갱신</b>:
-            <ul>
-              <li><b>Current SQL</b> — <code>V$SQLAREA.SQL_FULLTEXT</code> (IntelliJ Editor + SQL 신택스)</li>
-              <li><b>Wait History</b> — <code>V$SESSION_WAIT_HISTORY</code> 최근 10건의 wait event</li>
-              <li><b>Session Stats</b> — <code>V$SESSTAT</code> 의 logical reads / physical reads / parse / CPU / sort 등 핵심 통계</li>
-              <li><b>Explain Plan</b> — <code>V$SQL_PLAN</code> 트리. <b>TABLE ACCESS FULL · CARTESIAN은 빨강</b>, <b>INDEX 스캔은 초록</b>으로 비용 한눈에</li>
-            </ul>
-          </li>
-          <li><b>Locks 탭</b>: <code>V$LOCKED_OBJECT</code> + <code>V$SESSION</code> + <code>ALL_OBJECTS</code> 조인 — Exclusive / Row-X 모드 빨강 강조</li>
-          <li><b>Long Ops 탭</b>: <code>V$SESSION_LONGOPS</code> 진행률 (백업·인덱스 빌드·통계 수집 모니터링)</li>
-          <li><b>우클릭 → Kill Session / Kill Holder Session</b> — 확인 다이얼로그에 실행될 <code>ALTER SYSTEM KILL SESSION '...'</code>까지 표시</li>
-        </ul>
-
-        <h4>그 외</h4>
-        <ul>
-          <li><b>모든 테이블에 인라인 검색</b> — 포커스 두고 글자 타이핑만 시작하면 매칭 행으로 점프 (IntelliJ 관례)</li>
-          <li><b>컬럼 너비 영속화</b> — 한 번 조정하면 IDE 재시작 후에도 유지</li>
-          <li><b>다국어</b> — 영문 기본, IDE 로케일이 한국어면 한국어 자동 적용</li>
-        </ul>
-
-        <h4>필요한 Oracle 권한</h4>
-        <ul>
-          <li>테이블/뷰/프로시저 메타: <b>보통의 사용자 권한 (ALL_* SELECT)</b></li>
-          <li>Sessions / Locks / Explain Plan: <b>V$ 동적 뷰 SELECT</b> — 가장 간단한 방법은
-            <code>GRANT SELECT_CATALOG_ROLE TO &lt;user&gt;;</code> 한 줄</li>
-          <li>Kill Session: <code>ALTER SYSTEM</code> 권한 (운영 환경에서는 신중 부여)</li>
-        </ul>
-
-        <h4>안전성 — 100% 읽기 전용</h4>
-        <p>
-          Kill Session(명시적 사용자 확인 후 실행)을 제외하면, 이 플러그인이 데이터베이스에 보내는 모든 명령은
-          <b><code>SELECT</code>만</b>입니다. <code>INSERT / UPDATE / DELETE / DDL</code> 절대 없음.
-          운영 DB에 안심하고 붙여도 됩니다.
+          전체 사용 매뉴얼, 스크린샷, 설치 가이드는
+          <a href="https://github.com/woosb/intellij_plugin">GitHub 저장소</a>에서 확인하세요.
         </p>
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.3 — Slimmer in-IDE description</h3>
+        <ul>
+          <li>Trimmed the in-IDE Plugins-screen description to a concise summary (How to open + key features + GitHub link). The Marketplace listing page itself can host the full Getting Started content via the dashboard.</li>
+          <li>"How to open" section now spells out the <b>right-click entry points</b> on the Database panel and the SQL editor in addition to the <code>Alt+Shift+O</code> shortcut.</li>
+          <li>No runtime or behaviour changes from 1.0.2.</li>
+        </ul>
         <h3>1.0.2 — Marketplace listing polish</h3>
         <ul>
           <li>Expanded plugin description with the full feature inventory in both English and Korean, so the in-IDE Plugins screen now matches the Marketplace page.</li>
