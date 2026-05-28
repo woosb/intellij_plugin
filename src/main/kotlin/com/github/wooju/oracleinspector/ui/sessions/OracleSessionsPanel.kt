@@ -947,8 +947,11 @@ class OracleSessionsPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private abstract inner class StripedRenderer : DefaultTableCellRenderer() {
-        protected val evenBg = UIManager.getColor("Table.background")
-        protected val oddBg = UIManager.getColor("Table.stripeColor")
+        // Live getters (not cached vals) so the colours follow the current
+        // IDE theme even when the user switches between light / dark while
+        // a dialog or tool window is already open.
+        protected val evenBg: Color? get() = UIManager.getColor("Table.background")
+        protected val oddBg: Color? get() = UIManager.getColor("Table.stripeColor")
             ?: evenBg?.let { Color(it.red, it.green, it.blue, 220) }
 
         abstract fun decorate(tbl: JTable, row: Int, modelRow: Int, value: Any?, isSelected: Boolean)
