@@ -1,0 +1,34 @@
+# Oracle Database Free (23ai, ARM-friendly slim image) for plugin demos / screenshots.
+#
+# Usage:
+#   colima start --cpu 4 --memory 6 --disk 30    # one-time
+#   cd scripts/sample-db && docker compose up -d
+#   # wait ~60s until /init/setup/*.sql finish (watch with `docker compose logs -f`)
+#
+# Connect from DataGrip:
+#   Host=localhost, Port=1521, Service=FREEPDB1
+#   User=HR / Password=hr       (regular app user — most demos use this)
+#   User=SYS / Password=oracle  AS SYSDBA   (full DBA, for V$ views and Kill Session)
+#
+# Teardown:
+#   docker compose down -v       # removes container + named volume → clean reset
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: oracle-odi-demo
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: oracle
+      APP_USER: HR
+      APP_USER_PASSWORD: hr
+    volumes:
+      # gvenzl image runs files under /setup once on first boot.
+      # See https://github.com/gvenzl/oci-oracle-free#initialization-scripts
+      - ./init/setup:/container-entrypoint-initdb.d/setup:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
