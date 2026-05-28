@@ -173,6 +173,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.2 — Marketplace listing polish</h3>
+        <ul>
+          <li>Expanded plugin description with the full feature inventory in both English and Korean, so the in-IDE Plugins screen now matches the Marketplace page.</li>
+          <li>Synced <code>README.md</code> project structure and roadmap with the current codebase (PackageInfo, SimpleObjectInfo, Sessions UI, etc.).</li>
+          <li>No runtime or behaviour changes from 1.0.1.</li>
+        </ul>
         <h3>1.0.1 — Marketplace moderation fixes</h3>
         <ul>
           <li>Replaced internal <code>DbDataSource.getDelegate()</code> with the public <code>DbImplUtil.getMaybeLocalDataSource()</code> across all JDBC repositories and the editor describe action.</li>
