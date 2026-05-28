@@ -271,8 +271,10 @@ class OracleTableInfoDialog(
     private inner class StripedCellRenderer(
         private val align: Int = SwingConstants.LEFT,
     ) : DefaultTableCellRenderer() {
-        private val evenBg = UIManager.getColor("Table.background")
-        private val oddBg  = UIManager.getColor("Table.stripeColor")
+        // Live getters so the colours follow the current IDE theme — required for
+        // theme switches while the dialog is already open.
+        private val evenBg: Color? get() = UIManager.getColor("Table.background")
+        private val oddBg: Color? get() = UIManager.getColor("Table.stripeColor")
             ?: evenBg?.let { Color(it.red, it.green, it.blue, 220) }
 
         override fun getTableCellRendererComponent(

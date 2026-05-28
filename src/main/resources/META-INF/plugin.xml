@@ -60,6 +60,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.5 — Live theme switching</h3>
+        <ul>
+          <li>All plugin tables (Sessions, Locks, Long Ops, Wait History, Stats, Explain Plan, table/view dialog tabs, package routines, sequence/synonym property tables, etc.) now <b>follow the IDE theme immediately</b> when you toggle Light/Dark, without having to close and reopen the dialog.</li>
+          <li>Internal fix: cell renderers no longer cache <code>UIManager.getColor("Table.background")</code> at instantiation time; the colour is read on every paint, the way IntelliJ's own components do.</li>
+        </ul>
         <h3>1.0.4 — Preserve session selection across Auto 5s refresh</h3>
         <ul>
           <li>The Sessions tool window now remembers <b>which session row you had selected and the column sort order</b> when the 5-second auto-refresh fires. Previously the selection (and therefore the Current SQL / Wait History / Stats / Explain Plan sub-tabs) flickered away every cycle.</li>
