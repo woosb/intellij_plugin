@@ -114,16 +114,17 @@ class ShowOracleTableInfoFromEditorAction : AnAction() {
                 val ordered = candidates.sortedBy {
                     if (preferred != null && it.schema.equals(preferred, ignoreCase = true)) 0 else 1
                 }
-                val items = ordered.map { it.display() }.toTypedArray()
-                val choice = Messages.showChooseDialog(
-                    project,
-                    OracleInspectorBundle.message("action.dialog.message.multiple.matches"),
-                    OracleInspectorBundle.message("action.dialog.title.choose.object"),
-                    null,
-                    items,
-                    items[0],
-                )
-                if (choice >= 0) openOrPopup(project, editor, ordered[choice])
+                // showChooseDialog is deprecated — use a caret-anchored list popup instead.
+                val items = ordered.map { it.display() }
+                JBPopupFactory.getInstance()
+                    .createPopupChooserBuilder(items)
+                    .setTitle(OracleInspectorBundle.message("action.dialog.title.choose.object"))
+                    .setItemChosenCallback { chosen ->
+                        val idx = items.indexOf(chosen)
+                        if (idx >= 0) openOrPopup(project, editor, ordered[idx])
+                    }
+                    .createPopup()
+                    .showInBestPositionFor(editor)
             }
         }
     }

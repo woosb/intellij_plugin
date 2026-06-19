@@ -40,7 +40,8 @@ class DasTableRepository(
             .toSet()
 
         val columns = DasUtil.getColumns(table).map { col: DasColumn ->
-            val dt = col.dataType
+            // getDataType() is scheduled for removal — go through DasType instead.
+            val dt = col.dasType.toDataType()
             val colName = col.name.uppercase()
             ColumnInfo(
                 position = col.position.toInt(),

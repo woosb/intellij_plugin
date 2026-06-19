@@ -29,7 +29,8 @@ class DasRoutineRepository(
                 position = idx + 1,
                 name = arg.name.ifBlank { null },
                 direction = arg.argumentDirection?.name ?: "IN",
-                dataType = arg.dataType?.typeName ?: "",
+                // getDataType() is scheduled for removal — go through DasType instead.
+                dataType = arg.dasType.toDataType().typeName.ifBlank { "" },
                 defaultValue = arg.default,
             )
         }
