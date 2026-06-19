@@ -2,12 +2,16 @@ package com.github.wooju.oracleinspector.ui
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
+import com.github.wooju.oracleinspector.cache.OracleMetadataCache
 import com.github.wooju.oracleinspector.model.TableInfo
 import com.github.wooju.oracleinspector.repository.DasTableRepository
+import com.github.wooju.oracleinspector.repository.JdbcObjectChangeRepository
 import com.github.wooju.oracleinspector.repository.JdbcTableDataRepository
 import com.github.wooju.oracleinspector.repository.JdbcTableMetadataRepository
 import com.github.wooju.oracleinspector.service.OracleDictionaryService
+import com.intellij.database.model.ObjectKind
 import com.intellij.database.psi.DbTable
+import com.intellij.ui.JBColor
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -44,17 +48,33 @@ class OracleTableInfoDialog(
     private lateinit var refreshBtn: JButton
     private lateinit var statusLabel: JBLabel
     private lateinit var commentLabel: JBLabel
-    private var info: TableInfo = DasTableRepository(table, schemaName, tableName).loadTable()
     @Volatile private var loading: Boolean = false
+    @Volatile private var stale: Boolean = false
     private var dataPanel: JComponent? = null  // Data 탭은 메타데이터에 의존하지 않으므로 한 번만 생성
+
+    private val cache = OracleMetadataCache.getInstance(project)
+    private val objectKind = if (table.kind == ObjectKind.VIEW) "VIEW" else "TABLE"
+    private val cacheKey = OracleMetadataCache.key(
+        table.dataSource.uniqueId, schemaName, tableName, objectKind,
+    )
+    private var cachedFrom: Boolean = false
+
+    private var info: TableInfo = run {
+        val entry = cache.get(cacheKey)
+        (entry?.dto as? TableInfo)?.also { cachedFrom = true }
+            ?: DasTableRepository(table, schemaName, tableName).loadTable()
+    }
 
     init {
         title = "$schemaName.$tableName"
         isModal = false
         init()
-        // 캐시 데이터가 불완전하면 자동으로 JDBC 폴백
-        if (info.isIncomplete()) {
-            reloadFromJdbc(reason = OracleInspectorBundle.message("table.auto.refresh.reason.cache.incomplete"))
+        when {
+            // 캐시에서 즉시 표시됨 → DB 변경 여부만 백그라운드로 검증
+            cachedFrom -> scheduleStaleCheck()
+            // 캐시 데이터가 불완전하면 자동으로 JDBC 폴백 (결과는 캐시에 저장됨)
+            info.isIncomplete() ->
+                reloadFromJdbc(reason = OracleInspectorBundle.message("table.auto.refresh.reason.cache.incomplete"))
         }
     }
 
@@ -142,12 +162,15 @@ class OracleTableInfoDialog(
         val taskTitle = OracleInspectorBundle.message("table.task.title.fetch.metadata", schemaName, tableName)
         object : Task.Backgroundable(project, taskTitle, true) {
             private var fetched: TableInfo? = null
+            private var fetchedDdl: String? = null
             private var failure: Throwable? = null
 
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
                 try {
                     fetched = JdbcTableMetadataRepository(project, ds, schemaName, tableName).loadTable()
+                    fetchedDdl = JdbcObjectChangeRepository(project, ds)
+                        .loadLastDdlTime(schemaName, tableName, TABLE_OBJECT_TYPES)
                 } catch (t: Throwable) {
                     LOG.warn("JDBC 메타데이터 조회 실패", t)
                     failure = t
@@ -157,13 +180,23 @@ class OracleTableInfoDialog(
             override fun onFinished() {
                 ApplicationManager.getApplication().invokeLater {
                     loading = false
-                    setLoadingUi(false, message = "")
                     val ok = fetched
                     val err = failure
                     when {
-                        ok != null -> applyNewInfo(ok)
-                        err != null -> notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
-                        else -> notifyError(OracleInspectorBundle.message("common.query.cancelled"))
+                        ok != null -> {
+                            applyNewInfo(ok)
+                            cache.put(cacheKey, ok, fetchedDdl)
+                            stale = false
+                            setLoadingUi(false, message = "")
+                        }
+                        err != null -> {
+                            setLoadingUi(false, message = "")
+                            notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
+                        }
+                        else -> {
+                            setLoadingUi(false, message = "")
+                            notifyError(OracleInspectorBundle.message("common.query.cancelled"))
+                        }
                     }
                 }
             }
@@ -179,10 +212,52 @@ class OracleTableInfoDialog(
         if (selected in 0 until tabs.tabCount) tabs.selectedIndex = selected
     }
 
+    // ── 캐시 staleness: DB에서 변경됐는지 백그라운드로 가볍게 검증 ──────────────
+    private fun scheduleStaleCheck() {
+        val ds = table.dataSource
+        val baseline = cache.get(cacheKey)?.lastDdlTime ?: return
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("dialog.tooltip.refresh.from.db"), true) {
+            private var current: String? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                current = JdbcObjectChangeRepository(project, ds)
+                    .loadLastDdlTime(schemaName, tableName, TABLE_OBJECT_TYPES)
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    if (current != null && current != baseline && !loading) {
+                        stale = true
+                        applyStaleIndicator()
+                    }
+                }
+            }
+        }.queue()
+    }
+
+    private fun applyStaleIndicator() {
+        refreshBtn.icon = AllIcons.Actions.ForceRefresh
+        refreshBtn.toolTipText = OracleInspectorBundle.message("cache.stale.tooltip")
+        statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+        statusLabel.foreground = STALE_FG
+    }
+
     private fun setLoadingUi(busy: Boolean, message: String) {
         refreshBtn.isEnabled = !busy
-        refreshBtn.icon = if (busy) AllIcons.Process.Step_1 else AllIcons.Actions.Refresh
-        statusLabel.text = message
+        when {
+            busy -> refreshBtn.icon = AllIcons.Process.Step_1
+            stale -> refreshBtn.icon = AllIcons.Actions.ForceRefresh
+            else -> refreshBtn.icon = AllIcons.Actions.Refresh
+        }
+        if (busy) {
+            statusLabel.text = message
+        } else if (stale) {
+            statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+            statusLabel.foreground = STALE_FG
+        } else {
+            statusLabel.text = message
+            statusLabel.foreground = UIManager.getColor("Label.disabledForeground")
+            refreshBtn.toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
+        }
     }
 
     private fun notifyError(text: String) {
@@ -535,4 +610,11 @@ class OracleTableInfoDialog(
     }
 
     override fun createActions(): Array<Action> = arrayOf(okAction)
+
+    companion object {
+        /** 테이블/뷰 — 이름이 두 namespace에 겹치지 않으므로 둘 다 조회. */
+        private val TABLE_OBJECT_TYPES = listOf("TABLE", "VIEW")
+        /** stale 안내 색 — 테마 대응 amber. */
+        private val STALE_FG = JBColor(Color(0xB8, 0x6B, 0x00), Color(0xE0, 0xA8, 0x3A))
+    }
 }

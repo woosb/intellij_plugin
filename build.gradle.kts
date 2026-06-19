@@ -19,7 +19,7 @@ java {
 }
 
 group = "com.github.wooju"
-version = "1.0.6"
+version = "1.0.7"
 
 repositories {
     mavenCentral()

@@ -1,11 +1,14 @@
 package com.github.wooju.oracleinspector.ui
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
+import com.github.wooju.oracleinspector.cache.OracleMetadataCache
 import com.github.wooju.oracleinspector.model.SequenceInfo
 import com.github.wooju.oracleinspector.model.SynonymInfo
+import com.github.wooju.oracleinspector.repository.JdbcObjectChangeRepository
 import com.github.wooju.oracleinspector.repository.JdbcSimpleObjectRepository
 import com.intellij.database.psi.DbDataSource
 import com.intellij.icons.AllIcons
+import com.intellij.ui.JBColor
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
@@ -39,6 +42,8 @@ abstract class SimpleObjectDialog(
     schemaName: String,
     objectName: String,
     private val kindLabel: String,
+    private val dataSource: DbDataSource,
+    private val objectTypes: List<String>,
 ) : DialogWrapper(project) {
 
     protected val project_ = project
@@ -46,6 +51,11 @@ abstract class SimpleObjectDialog(
     protected val name = objectName
     protected val tableModel: DictionaryTableModel = DictionaryTableModel.empty(listOf("Property", "Value"))
     protected val tbl: JBTable = JBTable(tableModel)
+
+    @Volatile private var stale: Boolean = false
+    private lateinit var refreshBtn: JButton
+    private val cache = OracleMetadataCache.getInstance(project)
+    private val cacheKey = OracleMetadataCache.key(dataSource.uniqueId, schemaName, objectName, kindLabel)
 
     private val statusLabel = JBLabel("").apply {
         font = font.deriveFont(11f)
@@ -80,7 +90,7 @@ abstract class SimpleObjectDialog(
             font = font.deriveFont(Font.ITALIC, 12f)
             foreground = UIManager.getColor("Label.disabledForeground")
         }
-        val refresh = JButton(AllIcons.Actions.Refresh).apply {
+        refreshBtn = JButton(AllIcons.Actions.Refresh).apply {
             toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
             isBorderPainted = false
             isContentAreaFilled = false
@@ -91,7 +101,7 @@ abstract class SimpleObjectDialog(
         val right = JPanel(BorderLayout()).apply {
             isOpaque = false
             add(statusLabel, BorderLayout.CENTER)
-            add(refresh, BorderLayout.EAST)
+            add(refreshBtn, BorderLayout.EAST)
         }
         return JPanel(BorderLayout(8, 0)).apply {
             border = BorderFactory.createCompoundBorder(
@@ -106,22 +116,45 @@ abstract class SimpleObjectDialog(
     /** Repository 호출 결과를 Property/Value 리스트로 반환. null이면 "찾을 수 없음" 안내. */
     protected abstract fun fetchRows(): List<Pair<String, String?>>?
 
+    /** 서브클래스가 init() 직후 호출 — 캐시 우선, 없으면 JDBC reload. */
+    @Suppress("UNCHECKED_CAST")
+    protected fun loadInitial() {
+        val cached = cache.get(cacheKey)?.dto as? List<Pair<String, String?>>
+        if (cached != null) {
+            applyRows(cached)            // 즉시 표시 (JDBC 스킵)
+            scheduleStaleCheck()         // DB 변경만 백그라운드 검증
+        } else {
+            reload()
+        }
+    }
+
     protected fun reload() {
         statusLabel.text = OracleInspectorBundle.message("common.loading")
         object : Task.Backgroundable(project_, OracleInspectorBundle.message("simple.task.title", schema, name), true) {
             private var rows: List<Pair<String, String?>>? = null
+            private var fetchedDdl: String? = null
             private var failure: Throwable? = null
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
-                try { rows = fetchRows() } catch (t: Throwable) { failure = t }
+                try {
+                    rows = fetchRows()
+                    fetchedDdl = JdbcObjectChangeRepository(project_, dataSource)
+                        .loadLastDdlTime(schema, name, objectTypes)
+                } catch (t: Throwable) {
+                    failure = t
+                }
             }
             override fun onFinished() {
                 ApplicationManager.getApplication().invokeLater {
-                    statusLabel.text = ""
+                    stale = false
+                    setStatusNormal("")
                     val ok = rows
                     val err = failure
                     when {
-                        ok != null -> applyRows(ok)
+                        ok != null -> {
+                            applyRows(ok)
+                            cache.put(cacheKey, ok, fetchedDdl)  // 성공 결과만 캐시
+                        }
                         err != null -> {
                             applyRows(emptyList())
                             notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
@@ -131,6 +164,35 @@ abstract class SimpleObjectDialog(
                 }
             }
         }.queue()
+    }
+
+    private fun scheduleStaleCheck() {
+        val baseline = cache.get(cacheKey)?.lastDdlTime ?: return
+        object : Task.Backgroundable(project_, OracleInspectorBundle.message("dialog.tooltip.refresh.from.db"), true) {
+            private var current: String? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                current = JdbcObjectChangeRepository(project_, dataSource).loadLastDdlTime(schema, name, objectTypes)
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    if (current != null && current != baseline) {
+                        stale = true
+                        refreshBtn.icon = AllIcons.Actions.ForceRefresh
+                        refreshBtn.toolTipText = OracleInspectorBundle.message("cache.stale.tooltip")
+                        statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+                        statusLabel.foreground = STALE_FG
+                    }
+                }
+            }
+        }.queue()
+    }
+
+    private fun setStatusNormal(message: String) {
+        refreshBtn.icon = AllIcons.Actions.Refresh
+        refreshBtn.toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
+        statusLabel.text = message
+        statusLabel.foreground = UIManager.getColor("Label.disabledForeground")
     }
 
     private fun applyRows(rows: List<Pair<String, String?>>) {
@@ -171,6 +233,11 @@ abstract class SimpleObjectDialog(
             return this
         }
     }
+
+    companion object {
+        /** stale 안내 색 — 테마 대응 amber. */
+        private val STALE_FG = JBColor(Color(0xB8, 0x6B, 0x00), Color(0xE0, 0xA8, 0x3A))
+    }
 }
 
 /** SEQUENCE 다이얼로그 — MIN/MAX/INCREMENT/CYCLE/ORDER/CACHE/LAST_NUMBER */
@@ -179,11 +246,11 @@ class OracleSequenceInfoDialog(
     private val dataSource: DbDataSource,
     schemaName: String,
     sequenceName: String,
-) : SimpleObjectDialog(project, schemaName, sequenceName, "SEQUENCE") {
+) : SimpleObjectDialog(project, schemaName, sequenceName, "SEQUENCE", dataSource, listOf("SEQUENCE")) {
 
     init {
         init()
-        reload()
+        loadInitial()
     }
 
     override fun fetchRows(): List<Pair<String, String?>>? {
@@ -210,11 +277,11 @@ class OracleSynonymInfoDialog(
     private val dataSource: DbDataSource,
     schemaName: String,
     synonymName: String,
-) : SimpleObjectDialog(project, schemaName, synonymName, "SYNONYM") {
+) : SimpleObjectDialog(project, schemaName, synonymName, "SYNONYM", dataSource, listOf("SYNONYM")) {
 
     init {
         init()
-        reload()
+        loadInitial()
     }
 
     override fun fetchRows(): List<Pair<String, String?>>? {

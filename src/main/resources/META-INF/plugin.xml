@@ -60,6 +60,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.7 — Metadata cache extended to tables, views, sequences &amp; synonyms</h3>
+        <ul>
+          <li>The in-memory metadata cache and the "● Changed in DB — refresh" badge (introduced in 1.0.6 for procedures/packages) now also cover <b>table, view, sequence, and synonym dialogs</b>.</li>
+          <li>Same rules as before: caches only what was fetched via JDBC fallback, never replaces IntelliJ's own model, never holds table data or live V$ data, LRU-capped at 200, and never auto-refetches — it just lets you know when a manual refresh is worthwhile.</li>
+        </ul>
         <h3>1.0.6 — Metadata cache for procedures &amp; packages</h3>
         <ul>
           <li>Procedure / Function / Package dialogs now <b>cache the JDBC-fetched source in memory</b>, so reopening the same object no longer re-queries the database. The cache never replaces IntelliJ's own model — it only remembers what IntelliJ couldn't fully introspect, and never holds table data or live V$ data.</li>
