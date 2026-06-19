@@ -2,8 +2,10 @@ package com.github.wooju.oracleinspector.ui
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
+import com.github.wooju.oracleinspector.cache.OracleMetadataCache
 import com.github.wooju.oracleinspector.model.RoutineInfo
 import com.github.wooju.oracleinspector.repository.DasRoutineRepository
+import com.github.wooju.oracleinspector.repository.JdbcObjectChangeRepository
 import com.github.wooju.oracleinspector.repository.JdbcRoutineRepository
 import com.github.wooju.oracleinspector.service.OracleDictionaryService
 import com.intellij.database.psi.DbRoutine
@@ -66,17 +68,33 @@ class OracleRoutineInfoDialog(
     private lateinit var refreshBtn: JButton
     private lateinit var statusLabel: JBLabel
     private lateinit var kindLabel: JBLabel
-    private var info: RoutineInfo = DasRoutineRepository(routine, schemaName, routineName).loadRoutine()
     @Volatile private var loading: Boolean = false
+    @Volatile private var stale: Boolean = false
     private var sourceEditor: EditorEx? = null
+
+    private val cache = OracleMetadataCache.getInstance(project)
+    private val cacheKey = OracleMetadataCache.key(
+        routine.dataSource.uniqueId, schemaName, routineName, "ROUTINE",
+    )
+    private var cachedFrom: Boolean = false
+
+    // 1순위: 우리 캐시(이전 JDBC 결과) → 없으면 DAS. DAS도 불완전하면 init에서 JDBC 폴백.
+    private var info: RoutineInfo = run {
+        val entry = cache.get(cacheKey)
+        (entry?.dto as? RoutineInfo)?.also { cachedFrom = true }
+            ?: DasRoutineRepository(routine, schemaName, routineName).loadRoutine()
+    }
 
     init {
         title = "$schemaName.$routineName"
         isModal = false
         init()
-        // 소스가 비어있으면 자동으로 JDBC 폴백
-        if (info.isIncomplete()) {
-            reloadFromJdbc(reason = OracleInspectorBundle.message("routine.auto.refresh.reason.no.cached.source"))
+        when {
+            // 캐시에서 즉시 표시됨 → DB 변경 여부만 백그라운드로 가볍게 검증
+            cachedFrom -> scheduleStaleCheck()
+            // 소스가 비어있으면 자동으로 JDBC 폴백 (결과는 캐시에 저장됨)
+            info.isIncomplete() ->
+                reloadFromJdbc(reason = OracleInspectorBundle.message("routine.auto.refresh.reason.no.cached.source"))
         }
     }
 
@@ -173,12 +191,16 @@ class OracleRoutineInfoDialog(
             true,
         ) {
             private var fetched: RoutineInfo? = null
+            private var fetchedDdl: String? = null
             private var failure: Throwable? = null
 
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
                 try {
                     fetched = JdbcRoutineRepository(project, ds, schemaName, routineName).loadRoutine()
+                    // 캐시 staleness 기준선 — 풀 fetch 시점의 LAST_DDL_TIME
+                    fetchedDdl = JdbcObjectChangeRepository(project, ds)
+                        .loadLastDdlTime(schemaName, routineName, ROUTINE_OBJECT_TYPES)
                 } catch (t: Throwable) {
                     LOG.warn("JDBC 루틴 조회 실패", t)
                     failure = t
@@ -188,13 +210,23 @@ class OracleRoutineInfoDialog(
             override fun onFinished() {
                 ApplicationManager.getApplication().invokeLater {
                     loading = false
-                    setLoadingUi(false, "")
                     val ok = fetched
                     val err = failure
                     when {
-                        ok != null -> applyNewInfo(ok)
-                        err != null -> notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
-                        else -> notifyError(OracleInspectorBundle.message("common.query.cancelled"))
+                        ok != null -> {
+                            applyNewInfo(ok)
+                            cache.put(cacheKey, ok, fetchedDdl)   // 다음에 같은 객체 열면 JDBC 스킵
+                            stale = false
+                            setLoadingUi(false, "")               // stale 표시도 같이 해제됨
+                        }
+                        err != null -> {
+                            setLoadingUi(false, "")
+                            notifyError(OracleInspectorBundle.message("common.query.failed", err.message ?: err::class.simpleName.orEmpty()))
+                        }
+                        else -> {
+                            setLoadingUi(false, "")
+                            notifyError(OracleInspectorBundle.message("common.query.cancelled"))
+                        }
                     }
                 }
             }
@@ -210,10 +242,53 @@ class OracleRoutineInfoDialog(
         if (selected in 0 until tabs.tabCount) tabs.selectedIndex = selected
     }
 
+    // ── 캐시 staleness: DB에서 변경됐는지 백그라운드로 가볍게 검증 ──────────────
+    private fun scheduleStaleCheck() {
+        val ds = routine.dataSource
+        val baseline = cache.get(cacheKey)?.lastDdlTime ?: return  // 기준선 없으면 비교 불가
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("dialog.tooltip.refresh.from.db"), true) {
+            private var current: String? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                current = JdbcObjectChangeRepository(project, ds)
+                    .loadLastDdlTime(schemaName, routineName, ROUTINE_OBJECT_TYPES)
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    // current 가 null(권한 등)이면 조용히 무시. 다를 때만 표시.
+                    if (current != null && current != baseline && !loading) {
+                        stale = true
+                        applyStaleIndicator()
+                    }
+                }
+            }
+        }.queue()
+    }
+
+    private fun applyStaleIndicator() {
+        refreshBtn.icon = AllIcons.Actions.ForceRefresh
+        refreshBtn.toolTipText = OracleInspectorBundle.message("cache.stale.tooltip")
+        statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+        statusLabel.foreground = STALE_FG
+    }
+
     private fun setLoadingUi(busy: Boolean, message: String) {
         refreshBtn.isEnabled = !busy
-        refreshBtn.icon = if (busy) AllIcons.Process.Step_1 else AllIcons.Actions.Refresh
-        statusLabel.text = message
+        when {
+            busy -> refreshBtn.icon = AllIcons.Process.Step_1
+            stale -> refreshBtn.icon = AllIcons.Actions.ForceRefresh
+            else -> refreshBtn.icon = AllIcons.Actions.Refresh
+        }
+        if (busy) {
+            statusLabel.text = message
+        } else if (stale) {
+            statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+            statusLabel.foreground = STALE_FG
+        } else {
+            statusLabel.text = message
+            statusLabel.foreground = UIManager.getColor("Label.disabledForeground")
+            refreshBtn.toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
+        }
     }
 
     private fun notifyError(text: String) {
@@ -431,4 +506,11 @@ class OracleRoutineInfoDialog(
         }
 
     override fun createActions() = arrayOf(okAction)
+
+    companion object {
+        /** standalone 루틴은 PROCEDURE 또는 FUNCTION 중 하나로 잡힘 — 둘 다 조회. */
+        private val ROUTINE_OBJECT_TYPES = listOf("PROCEDURE", "FUNCTION")
+        /** stale 안내 색 — 테마 대응 amber. */
+        private val STALE_FG = JBColor(Color(0xB8, 0x6B, 0x00), Color(0xE0, 0xA8, 0x3A))
+    }
 }

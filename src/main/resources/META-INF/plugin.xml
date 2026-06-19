@@ -60,6 +60,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.0.6 — Metadata cache for procedures &amp; packages</h3>
+        <ul>
+          <li>Procedure / Function / Package dialogs now <b>cache the JDBC-fetched source in memory</b>, so reopening the same object no longer re-queries the database. The cache never replaces IntelliJ's own model — it only remembers what IntelliJ couldn't fully introspect, and never holds table data or live V$ data.</li>
+          <li><b>Change awareness</b>: on a cache hit, a lightweight <code>ALL_OBJECTS.LAST_DDL_TIME</code> check runs in the background. If the object changed in the database, the refresh icon and a "● Changed in DB — refresh" notice appear — it never auto-refetches, you stay in control.</li>
+          <li>Cache is per data source + schema + object, capped at 200 entries (LRU), and cleared when the project closes.</li>
+        </ul>
         <h3>1.0.5 — Live theme switching</h3>
         <ul>
           <li>All plugin tables (Sessions, Locks, Long Ops, Wait History, Stats, Explain Plan, table/view dialog tabs, package routines, sequence/synonym property tables, etc.) now <b>follow the IDE theme immediately</b> when you toggle Light/Dark, without having to close and reopen the dialog.</li>

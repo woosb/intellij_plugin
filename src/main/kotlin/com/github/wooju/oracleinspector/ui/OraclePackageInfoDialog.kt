@@ -2,9 +2,11 @@ package com.github.wooju.oracleinspector.ui
 
 import com.github.wooju.oracleinspector.OracleInspectorBundle
 import com.github.wooju.oracleinspector.actions.OracleInspectorDataKeys
+import com.github.wooju.oracleinspector.cache.OracleMetadataCache
 import com.github.wooju.oracleinspector.model.PackageError
 import com.github.wooju.oracleinspector.model.PackageInfo
 import com.github.wooju.oracleinspector.repository.DasPackageRepository
+import com.github.wooju.oracleinspector.repository.JdbcObjectChangeRepository
 import com.github.wooju.oracleinspector.repository.JdbcPackageRepository
 import com.intellij.database.psi.DbDataSource
 import com.intellij.icons.AllIcons
@@ -73,19 +75,33 @@ class OraclePackageInfoDialog(
     private lateinit var refreshBtn: JButton
     private lateinit var statusLabel: JBLabel
     private lateinit var headerLabel: JBLabel
-    private var info: PackageInfo = DasPackageRepository(schemaName, packageName).loadPackage()
     @Volatile private var loading: Boolean = false
+    @Volatile private var stale: Boolean = false
 
     // 에디터를 재로딩 시 점프/하이라이트 적용 위해 멤버 변수에 보관
     private var specEditor: EditorEx? = null
     private var bodyEditor: EditorEx? = null
 
+    private val cache = OracleMetadataCache.getInstance(project)
+    private val cacheKey = OracleMetadataCache.key(
+        dataSource.uniqueId, schemaName, packageName, "PACKAGE",
+    )
+    private var cachedFrom: Boolean = false
+
+    private var info: PackageInfo = run {
+        val entry = cache.get(cacheKey)
+        (entry?.dto as? PackageInfo)?.also { cachedFrom = true }
+            ?: DasPackageRepository(schemaName, packageName).loadPackage()
+    }
+
     init {
         title = "$schemaName.$packageName"
         isModal = false
         init()
-        if (info.isIncomplete()) {
-            reloadFromJdbc(reason = OracleInspectorBundle.message("routine.auto.refresh.reason.no.cached.source"))
+        when {
+            cachedFrom -> scheduleStaleCheck()
+            info.isIncomplete() ->
+                reloadFromJdbc(reason = OracleInspectorBundle.message("routine.auto.refresh.reason.no.cached.source"))
         }
     }
 
@@ -196,12 +212,15 @@ class OraclePackageInfoDialog(
             true,
         ) {
             private var fetched: PackageInfo? = null
+            private var fetchedDdl: String? = null
             private var failure: Throwable? = null
 
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
                 try {
                     fetched = JdbcPackageRepository(project, dataSource, schemaName, packageName).loadPackage()
+                    fetchedDdl = JdbcObjectChangeRepository(project, dataSource)
+                        .loadLastDdlTime(schemaName, packageName, PACKAGE_OBJECT_TYPES)
                 } catch (t: Throwable) {
                     LOG.warn("JDBC 패키지 조회 실패", t)
                     failure = t
@@ -211,18 +230,28 @@ class OraclePackageInfoDialog(
             override fun onFinished() {
                 ApplicationManager.getApplication().invokeLater {
                     loading = false
-                    setLoadingUi(false, "")
                     val ok = fetched
                     val err = failure
                     when {
-                        ok != null -> applyNewInfo(ok)
-                        err != null -> notifyError(
-                            OracleInspectorBundle.message(
-                                "common.query.failed",
-                                err.message ?: err::class.simpleName.orEmpty(),
+                        ok != null -> {
+                            applyNewInfo(ok)
+                            cache.put(cacheKey, ok, fetchedDdl)
+                            stale = false
+                            setLoadingUi(false, "")
+                        }
+                        err != null -> {
+                            setLoadingUi(false, "")
+                            notifyError(
+                                OracleInspectorBundle.message(
+                                    "common.query.failed",
+                                    err.message ?: err::class.simpleName.orEmpty(),
+                                )
                             )
-                        )
-                        else -> notifyError(OracleInspectorBundle.message("common.query.cancelled"))
+                        }
+                        else -> {
+                            setLoadingUi(false, "")
+                            notifyError(OracleInspectorBundle.message("common.query.cancelled"))
+                        }
                     }
                 }
             }
@@ -238,10 +267,51 @@ class OraclePackageInfoDialog(
         if (selected in 0 until tabs.tabCount) tabs.selectedIndex = selected
     }
 
+    // ── 캐시 staleness: PACKAGE + PACKAGE BODY 어느 쪽이 바뀌어도 감지 ─────────
+    private fun scheduleStaleCheck() {
+        val baseline = cache.get(cacheKey)?.lastDdlTime ?: return
+        object : Task.Backgroundable(project, OracleInspectorBundle.message("dialog.tooltip.refresh.from.db"), true) {
+            private var current: String? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                current = JdbcObjectChangeRepository(project, dataSource)
+                    .loadLastDdlTime(schemaName, packageName, PACKAGE_OBJECT_TYPES)
+            }
+            override fun onFinished() {
+                ApplicationManager.getApplication().invokeLater {
+                    if (current != null && current != baseline && !loading) {
+                        stale = true
+                        applyStaleIndicator()
+                    }
+                }
+            }
+        }.queue()
+    }
+
+    private fun applyStaleIndicator() {
+        refreshBtn.icon = AllIcons.Actions.ForceRefresh
+        refreshBtn.toolTipText = OracleInspectorBundle.message("cache.stale.tooltip")
+        statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+        statusLabel.foreground = STALE_FG
+    }
+
     private fun setLoadingUi(busy: Boolean, message: String) {
         refreshBtn.isEnabled = !busy
-        refreshBtn.icon = if (busy) AllIcons.Process.Step_1 else AllIcons.Actions.Refresh
-        statusLabel.text = message
+        when {
+            busy -> refreshBtn.icon = AllIcons.Process.Step_1
+            stale -> refreshBtn.icon = AllIcons.Actions.ForceRefresh
+            else -> refreshBtn.icon = AllIcons.Actions.Refresh
+        }
+        if (busy) {
+            statusLabel.text = message
+        } else if (stale) {
+            statusLabel.text = OracleInspectorBundle.message("cache.stale.notice")
+            statusLabel.foreground = STALE_FG
+        } else {
+            statusLabel.text = message
+            statusLabel.foreground = UIManager.getColor("Label.disabledForeground")
+            refreshBtn.toolTipText = OracleInspectorBundle.message("dialog.tooltip.refresh.from.db")
+        }
     }
 
     private fun notifyError(text: String) {
@@ -418,4 +488,11 @@ class OraclePackageInfoDialog(
     }
 
     override fun createActions() = arrayOf(okAction)
+
+    companion object {
+        /** 패키지 spec/body 어느 쪽이 바뀌어도 감지하도록 둘 다 조회. */
+        private val PACKAGE_OBJECT_TYPES = listOf("PACKAGE", "PACKAGE BODY")
+        /** stale 안내 색 — 테마 대응 amber. */
+        private val STALE_FG = JBColor(Color(0xB8, 0x6B, 0x00), Color(0xE0, 0xA8, 0x3A))
+    }
 }
