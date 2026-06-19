@@ -73,7 +73,8 @@ scripts/sample-db/
 │   ├── 03_buggy_proc.sql       # 컴파일 오류 있는 PROC + 정상 FUNC + IN/OUT PROC
 │   ├── 04_demo_package.sql     # HR.HR_UTIL Spec + Body + 5개 routine
 │   ├── 05_explain_stats.sql    # DBMS_STATS — Explain Plan 비용 정확도
-│   └── 06_grants.sql           # HR에 SELECT_CATALOG_ROLE + ALTER SYSTEM
+│   ├── 06_grants.sql           # HR에 SELECT_CATALOG_ROLE + ALTER SYSTEM
+│   └── 07_sample_routines.sql  # 다양한 시그니처 standalone PROC/FUNC (Routines 탭 채우기)
 └── scenarios/                  # 캡처 시점에 수동 실행
     ├── blocking_session.sql
     └── explain_plan_query.sql
