@@ -58,6 +58,16 @@ intellijPlatform {
             ide(IntelliJPlatformType.IntellijIdeaUltimate, "2024.3.5")
         }
     }
+
+    // ./gradlew publishPlugin — Marketplace(plugin id 31857)에 현재 version 업로드.
+    //  - 토큰은 코드/깃에 넣지 않고 PUBLISH_TOKEN 환경변수로만 주입한다.
+    //    https://plugins.jetbrains.com/author/me/tokens 에서 permanent token 발급.
+    //    예: PUBLISH_TOKEN=perm-xxxx ./gradlew publishPlugin
+    //  - channels 기본값은 ["default"](Stable). EAP로 올리려면 "eap" 추가.
+    //  - environmentVariable 는 lazy 라서 토큰 없이도 build/verify 는 그대로 동작한다.
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+    }
 }
 
 tasks {
