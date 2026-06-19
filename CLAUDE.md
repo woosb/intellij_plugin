@@ -25,6 +25,7 @@ DataGrip / IntelliJ IDEA Ultimate에서 Oracle 딕셔너리(테이블 · 뷰 · 
 ./gradlew runIde        # 샌드박스 IDE 띄워서 플러그인 동작 확인
 ./gradlew buildPlugin   # build/distributions/*.zip 생성 (Marketplace 업로드용)
 ./gradlew compileKotlin # 빠른 컴파일 검증
+PUBLISH_TOKEN=perm-xxxx ./gradlew publishPlugin  # Marketplace(plugin 31857) 업로드 — 토큰은 env로만
 ./scripts/ship.sh       # 현재 브랜치 push → PR → squash merge → 원격 브랜치 삭제
 ```
 
